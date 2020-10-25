@@ -1,5 +1,5 @@
 module ALU_component (output reg [31:0] Out, output reg Nf, Zf, Cf, Vf, // CC = N, Z, C, V
-      input [31:0] A, B, input [3:0] ALU_op, input S, Ci); 
+      input [31:0] A, B, input [3:0] ALU_op, input Ci); 
   reg temp;
   reg [31:0]tempOut; // For cases where output doesn't matter
   always @ (ALU_op,A,B)
@@ -23,15 +23,13 @@ module ALU_component (output reg [31:0] Out, output reg Nf, Zf, Cf, Vf, // CC = 
       4'b1110 : Out = A & ~(B);                 // BIC: Bit Clear
       4'b1111 : Out = ~(B);                     // MVN: Move Not
     endcase  
-    if (S)
-      begin
-      Cf = temp;
-      Nf = Out[31];
-      Zf = ~(Out);
-      if ((ALU_op >= 4'b0010) & (ALU_op <= 4'b0111)) Vf = (Out[31] && ~(A[31] & B[31])) ^ (A[31] | B[31]);
-      end
+
+    Cf = temp;
+    Nf = Out[31];
+    Zf = ~(Out && Out);
+    if ((ALU_op >= 4'b0010) & (ALU_op <= 4'b0111)) Vf = (Out[31] && ~(A[31] & B[31])) ^ (A[31] | B[31]);
+    
     if ((ALU_op >= 4'b1000) & (ALU_op <= 4'b1011)) begin
-      Cf = temp;
       Nf = tempOut[31];
       Zf = tempOut && 32'b0;
       Vf = tempOut[31] && ~(A[31] & B[31]);
@@ -47,11 +45,13 @@ module ALU_mux (output reg [31:0] Out, input [31:0] B, immed, input shift_imm);
       else Out = B;
 endmodule
 
-module shifter_sign_extender(output reg [31:0] Out, input [31:0] Rm, input [11:0] I, input [2:0] I_cmd);
+module shifter_sign_extender(output reg [31:0] Out, input [31:0] Rm, input[31:0] Rn, 
+      input [11:0] I, input[4:0] Opcode, input [2:0] I_cmd);
   reg temp1;
   always @ (Rm, I, I_cmd)
   begin
-    if (I_cmd == 3'b001) begin // 32-bit Immediate Shifter Operand : Rotation of immediate
+    case (I_cmd)
+      3'b001 : begin // 32-bit Immediate Shifter Operand : Rotation of immediate
       Out = 32'b0 + I[7:0];
       
       repeat (I[11:8] * 2)
@@ -60,29 +60,39 @@ module shifter_sign_extender(output reg [31:0] Out, input [31:0] Rm, input [11:0
           Out = Out >> 1;
           Out[31] = temp1;
         end
-    end
-    else if (I_cmd == 3'b000) begin
-      Out = Rm;
-      case (I[6:5])
-      2'b00 : Out = Rm << I[11:7]; // LSL: Logical Shift Left 
-      2'b01 : Out = Rm >> I[11:7]; // LSR: Logical Shift Right
-      2'b10 : begin repeat (I[11:7])     // ASR: Arithmetic Shift Right
-          begin
-            Out = Out >> 1;
-            Out[31] = 1'b1;
-          end
-        end 
-      2'b11 : begin repeat (I[11:7])     // ROR: Rotate Right
-          begin
-            temp1 = Out[0];
-            Out = Out >> 1;
-            Out[31] = temp1;
-          end
-        end 
-      endcase
       end
-    else Out = Rm;
+      3'b000 : begin // Shift by immediate
+        Out = Rm;
+        case (I[6:5])
+        2'b00 : Out = Rm << I[11:7]; // LSL: Logical Shift Left 
+        2'b01 : Out = Rm >> I[11:7]; // LSR: Logical Shift Right
+        2'b10 : begin repeat (I[11:7])     // ASR: Arithmetic Shift Right
+            begin
+              Out = Out >> 1;
+              Out[31] = 1'b1;
+            end
+          end 
+        2'b11 : begin repeat (I[11:7])     // ROR: Rotate Right
+            begin
+              temp1 = Out[0];
+              Out = Out >> 1;
+              Out[31] = temp1;
+            end
+          end 
+        endcase
+      end
+      3'b010 : if (Opcode[3]) Out = Rn + I; else Out = Rn - I;  // Load/Store Immediate offset
+      3'b011 : if (Opcode[3]) Out = Rn + Rm; else Out = Rn - Rm;  // Load/Store Register offset
+      default : Out = Rm;
+    endcase
   end
+endmodule
+
+// Decides which address to pass onto the MEM stage
+module ALUvsSSE_mux (output reg [31:0] Out, input [31:0] ALU_Out, SSE_Out, input load_instr);
+  always @ (load_instr, ALU_Out, SSE_Out)
+      if (load_instr) Out = SSE_Out;
+      else Out = ALU_Out;
 endmodule
 
 /* TESTING */
@@ -93,7 +103,7 @@ module ALU_test;
   reg S, Ci;
   wire [31:0] Out;
   wire Nf, Zf, Cf, Vf;
-  ALU_component AU (Out, Nf, Zf, Cf, Vf, A, B, ALU_op, S, Ci); //instancia ALU
+  ALU_component AU (Out, Nf, Zf, Cf, Vf, A, B, ALU_op, Ci); //instancia ALU
   initial #70 $finish; // Especifica cuando termina simulación  
   initial fork
     #2 A = 32'b0000_0000_0000_0000_0000_0000_0000_0101;
@@ -139,22 +149,25 @@ module ALU_test;
 endmodule
 
 module test_shifter;
-reg [31:0] Rm; reg [11:0] I; reg [2:0] I_cmd;
-wire [31:0] Out;
-shifter_sign_extender sse (Out, Rm, I, I_cmd);
-initial #50 $finish; // Especifica cuando termina simulación
-initial fork
-  Rm = 32'b1110_1011_0000_0000_0000_0000_0000_0111;
-  I_cmd = 001; I = 12'b0000_01101010; // Immediate
-  #2 I_cmd = 001;  #2  I = 12'b0010_01101010; // Shift by Immediate
-  #4 I_cmd = 000;  #4  I = 12'b0001_00000101; // LSL: Logical Shift Left 
-  #6 I_cmd = 000;  #6  I = 12'b0001_10100101; // LSR: Logical Shift Right
-  #8 I_cmd = 000;  #8  I = 12'b0010_11000101; // ASR: Arithmetic Shift Right
-  #10 I_cmd = 000; #10 I = 12'b0010_11100101; // ROR: Rotate Right
-  
-join
-initial begin
-  $display ("                Rm                     I       I_cmd                Out                    Time:");
-  $monitor (" %b %b  %b  %b %d ", Rm, I, I_cmd, Out, $time); 
-end
+  reg [31:0] Rm, Rn; reg [11:0] I; reg[4:0] Opcode; reg [2:0] I_cmd;
+  wire [31:0] Out;
+  shifter_sign_extender sse (Out, Rm, Rn, I, Opcode, I_cmd);
+  initial #50 $finish; // Especifica cuando termina simulación
+  initial fork
+    Rm = 32'b1110_1011_0000_0000_0000_0000_0000_0111;
+    Rn = 32'b0000_1000_0000_0000_0000_0011_0000_1001;
+    Opcode = 5'b10101;
+    I_cmd = 001; I = 12'b0000_01101010; // Immediate
+    #2 I_cmd = 3'b001;  #2  I = 12'b0010_0110_1010; // Shift by Immediate
+    #4 I_cmd = 3'b000;  #4  I = 12'b0001_0000_0101; // LSL: Logical Shift Left 
+    #6 I_cmd = 3'b000;  #6  I = 12'b0001_1010_0101; // LSR: Logical Shift Right
+    #8 I_cmd = 3'b000;  #8  I = 12'b0010_1100_0101; // ASR: Arithmetic Shift Right
+    #10 I_cmd = 3'b000; #10 I = 12'b0010_1110_0101; // ROR: Rotate Right
+    #12 I_cmd = 3'b010; #12 I = 12'b0010_1110_0101; // Load/Store Immediate offset (Subtracts)
+    #14 I_cmd = 3'b011; #14 Opcode = 5'b11101; // Load/Store Register offset (Adds)
+  join
+  initial begin
+    $display ("                Rm                               Rn                     I       I_cmd                Out                    Time:");
+    $monitor (" %b %b %b  %b  %b %d ", Rm, Rn, I, I_cmd, Out, $time); 
+  end
 endmodule
