@@ -1,13 +1,13 @@
-module ALU_component (output reg [31:0] Out, output reg Nf, Zf, Cf, Vf, // CC = N, Z, C, V
+module ALU_component (output reg [31:0] Out, output reg N, Z, C, V, // CC = N, Z, C, V
       input [31:0] A, B, input [3:0] ALU_op, input Ci); 
   reg temp;
   reg [31:0]tempOut; // For cases where output doesn't matter
   always @ (ALU_op,A,B)
   begin
-    Nf = 1'b0; Zf = 1'b0; Cf = 1'b0; Vf = 1'b0;
+    N = 1'b0; Z = 1'b0; C = 1'b0; V = 1'b0;
     case (ALU_op)
       4'b0000 : Out = A & B;                    // AND: Logical AND
-      4'b0001 : {temp, Out} = A ^ B;                    // EOR: Logical Exclusive OR
+      4'b0001 : {temp, Out} = A ^ B;            // EOR: Logical Exclusive OR
       4'b0010 : {temp, Out} = A - B;            // SUB: Subtract
       4'b0011 : {temp, Out} = B - A;            // RSB: Reverse Subtract
       4'b0100 : {temp, Out} = A + B;            // ADD: Add
@@ -24,15 +24,15 @@ module ALU_component (output reg [31:0] Out, output reg Nf, Zf, Cf, Vf, // CC = 
       4'b1111 : Out = ~(B);                     // MVN: Move Not
     endcase  
 
-    Cf = temp;
-    Nf = Out[31];
-    Zf = ~(Out && Out);
-    if ((ALU_op >= 4'b0010) & (ALU_op <= 4'b0111)) Vf = (Out[31] && ~(A[31] & B[31])) ^ (A[31] | B[31]);
+    C = temp;
+    N = Out[31];
+    Z = ~(Out && Out);
+    if ((ALU_op >= 4'b0010) & (ALU_op <= 4'b0111)) V = (Out[31] && ~(A[31] & B[31])) ^ (A[31] | B[31]);
     
     if ((ALU_op >= 4'b1000) & (ALU_op <= 4'b1011)) begin
-      Nf = tempOut[31];
-      Zf = tempOut && 32'b0;
-      Vf = tempOut[31] && ~(A[31] & B[31]);
+      N = tempOut[31];
+      Z = tempOut && 32'b0;
+      V = tempOut[31] && ~(A[31] & B[31]);
       Out = 32'b0;
       end
   end
@@ -48,7 +48,7 @@ endmodule
 module shifter_sign_extender(output reg [31:0] Out, input [31:0] Rm, input[31:0] Rn, 
       input [11:0] I, input[4:0] Opcode, input [2:0] I_cmd);
   reg temp1;
-  always @ (Rm, I, I_cmd)
+  always @ (Rm, Rn, I, Opcode, I_cmd)
   begin
     case (I_cmd)
       3'b001 : begin // 32-bit Immediate Shifter Operand : Rotation of immediate
@@ -93,6 +93,32 @@ module ALUvsSSE_mux (output reg [31:0] Out, input [31:0] ALU_Out, SSE_Out, input
   always @ (load_instr, ALU_Out, SSE_Out)
       if (load_instr) Out = SSE_Out;
       else Out = ALU_Out;
+endmodule
+
+module condition_handler(output reg out, input[3:0] cond, input B_instr, N, Z, C, V);
+  always @ (cond, B_instr, N, Z, C, V)
+    begin
+      out = 1'b0;
+      if(B_instr) begin
+        case(cond)
+          4'b0000 : if(Z) out = 1'b1;               // Equal
+          4'b0001 : if(~(Z)) out = 1'b1;            // Not equal
+          4'b0010 : if(C) out = 1'b1;               // Unsigned	higher or same
+          4'b0011 : if(~(C)) out = 1'b1;            // Unsigned lower
+          4'b0100 : if(N) out = 1'b1;               // Minus
+          4'b0101 : if(~(N)) out = 1'b1;            // Positive or Zero
+          4'b0110 : if(V) out = 1'b1;               // Overflow
+          4'b0111 : if(~(V)) out = 1'b1;            // No overflow
+          4'b1000 : if(C & ~(Z)) out = 1'b1;        // Unsigned higher
+          4'b1001 : if(~(C) | Z) out = 1'b1;        // Unsigned lower or same
+          4'b1010 : if(N == V) out = 1'b1;          // Greater or equal
+          4'b1011 : if(N != V) out = 1'b1;          // Less than
+          4'b1100 : if(~(Z) & (N == V)) out = 1'b1; // Greater than
+          4'b1101 : if(Z & (N != V)) out = 1'b1;    // Less than or equal
+          4'b1110 : out = 1'b1;                     // Always
+        endcase
+      end
+    end
 endmodule
 
 /* TESTING */
@@ -169,5 +195,36 @@ module test_shifter;
   initial begin
     $display ("                Rm                               Rn                     I       I_cmd                Out                    Time:");
     $monitor (" %b %b %b  %b  %b %d ", Rm, Rn, I, I_cmd, Out, $time); 
+  end
+endmodule
+
+module test_condition_handler;
+  reg [3:0] cond; reg B_instr, N, Z, C, V;
+  wire out;
+  condition_handler ch (out, cond, B_instr, N, Z, C, V);
+  initial #50 $finish; // Especifica cuando termina simulación
+  initial fork
+    B_instr = 1'b0; cond = 4'b0000;
+    N = 1'b1; Z = 1'b1; C = 1'b1; V = 1'b1; // return: 0 - (B_instr is off)
+    #1 cond = 4'b0000; #1 B_instr = 1'b1;   // return: 1 - Equal
+    #2 cond = 4'b0001;                      // return: 0 - Not equal
+    #3  cond = 4'b0010;                     // return: 1 - Unsigned	higher or same
+    #4  cond = 4'b0011;                     // return: 0 - Unsigned lower
+    #5  cond = 4'b0100;                     // return: 1 - Minus
+    #6  cond = 4'b0101;                     // return: 0 - Positive or Zero
+    #7  cond = 4'b0110;                     // return: 1 - Overflow
+    #8  cond = 4'b0111;                     // return: 0 - No overflow
+    #9  cond = 4'b1000; #9 Z = 1'b0;        // return: 1 - Unsigned higher
+    #10  cond = 4'b1001;                    // return: 0 - Unsigned lower or same
+    #11 cond = 4'b1010;                     // return: 1 - Greater or equal
+    #12 cond = 4'b1011; #12 V = 1'b0;       // return: 1 - Less than
+    #13 cond = 4'b1100;                     // return: 0 - Greater than
+    #14 cond = 4'b1101;                     // return: 0 - Less than or equal
+    // Always: return: 1
+    #15 cond = 4'b1110; #15 N = 1'b0; #15 Z = 1'b0; #15 C = 1'b0; #15 V = 1'b0;
+  join
+  initial begin
+    $display (" B cond N Z C V out            Time:");
+    $monitor (" %b %b %b %b %b %b  %b  %d ", B_instr, cond, N, Z, C, V, out, $time); 
   end
 endmodule
