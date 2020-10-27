@@ -4,7 +4,7 @@ module ALU_component (output reg [31:0] Out, output reg N, Z, C, V, // CC = N, Z
   reg [31:0]tempOut; // For cases where output doesn't matter
   always @ (ALU_op,A,B)
   begin
-    N = 1'b0; Z = 1'b0; C = 1'b0; V = 1'b0;
+    N = 1'b0; Z = 1'b0; C = 1'b0; V = 1'b0; temp = 1'b0;
     case (ALU_op)
       4'b0000 : Out = A & B;                    // AND: Logical AND
       4'b0001 : {temp, Out} = A ^ B;            // EOR: Logical Exclusive OR
@@ -41,9 +41,9 @@ module ALU_component (output reg [31:0] Out, output reg N, Z, C, V, // CC = N, Z
     
 endmodule
 
-module ALU_mux (output reg [31:0] Out, input [31:0] B, immed, input shift_imm);
+module ALU_mux(output reg [31:0] Out, input [31:0] B, immed, input shift_imm);
   always @ (shift_imm, B, immed)
-      if (shift_imm) Out = shift_imm;
+      if (shift_imm) Out = immed;
       else Out = B;
 endmodule
 
@@ -91,7 +91,7 @@ module shifter_sign_extender(output reg [31:0] Out, input [31:0] Rm, input[31:0]
 endmodule
 
 // Decides which address to pass onto the MEM stage
-module ALUvsSSE_mux (output reg [31:0] Out, input [31:0] ALU_Out, SSE_Out, input load_instr);
+module ALUvsSSE_mux(output reg [31:0] Out, input [31:0] ALU_Out, SSE_Out, input load_instr);
   always @ (load_instr, ALU_Out, SSE_Out)
       if (load_instr) Out = SSE_Out;
       else Out = ALU_Out;
@@ -125,8 +125,11 @@ endmodule
 
 module status_register(output reg N, Z, C, V, input Ni, Zi, Ci, Vi, S);
   always @ (Ni, Zi, Ci, Vi, S)
-    if (S) begin
-      N = Ni; Z = Zi; C = Ci; V = Vi;
+    begin 
+      N = 1'b0; Z = 1'b0; C = 1'b0; V = 1'b0;
+      if (S) begin
+        N = Ni; Z = Zi; C = Ci; V = Vi;
+      end
     end
 endmodule
 
@@ -139,7 +142,7 @@ module ALU_test;
   wire [31:0] Out;
   wire N, Z, C, V;
   ALU_component AU (Out, N, Z, C, V, A, B, ALU_op, Ci); //instancia ALU
-  initial #50 $finish; // Especifica cuando termina simulación  
+  initial #100 $finish; // Especifica cuando termina simulación  
   initial fork
     #1 A = 32'b0000_0000_0000_0000_0000_0000_0000_0101;
     #1 B = 32'b0000_0000_0000_0000_0000_0111_0001_1101;
@@ -187,7 +190,7 @@ module test_shifter;
   reg [31:0] Rm, Rn; reg [11:0] I; reg[4:0] Opcode; reg [2:0] I_cmd;
   wire [31:0] Out;
   shifter_sign_extender sse (Out, Rm, Rn, I, Opcode, I_cmd);
-  initial #50 $finish; // Especifica cuando termina simulación
+  initial #100 $finish; // Especifica cuando termina simulación
   initial fork
     #31 Rm = 32'b1110_1011_0000_0000_0000_0000_0000_0111;
     #31 Rn = 32'b0000_1000_0000_0000_0000_0011_0000_1001;
@@ -211,20 +214,20 @@ module test_condition_handler;
   reg [3:0] cond; reg B_instr, N, Z, C, V;
   wire out;
   condition_handler ch (out, cond, B_instr, N, Z, C, V);
-  initial #50 $finish; // Especifica cuando termina simulación
+  initial #100 $finish; // Especifica cuando termina simulación
   initial fork
     #40 B_instr = 1'b0; #40 cond = 4'b0000;
     #40 N = 1'b1; Z = 1'b1; #40 C = 1'b1; #40 V = 1'b1; // return: 0 - (B_instr is off)
     #41 cond = 4'b0000; #41 B_instr = 1'b1;   // return: 1 - Equal
     #42 cond = 4'b0001;                      // return: 0 - Not equal
-    #43  cond = 4'b0010;                     // return: 1 - Unsigned	higher or same
-    #44  cond = 4'b0011;                     // return: 0 - Unsigned lower
-    #45  cond = 4'b0100;                     // return: 1 - Minus
-    #46  cond = 4'b0101;                     // return: 0 - Positive or Zero
-    #47  cond = 4'b0110;                     // return: 1 - Overflow
-    #48  cond = 4'b0111;                     // return: 0 - No overflow
-    #49  cond = 4'b1000; #49 Z = 1'b0;        // return: 1 - Unsigned higher
-    #50  cond = 4'b1001;                    // return: 0 - Unsigned lower or same
+    #43 cond = 4'b0010;                     // return: 1 - Unsigned	higher or same
+    #44 cond = 4'b0011;                     // return: 0 - Unsigned lower
+    #45 cond = 4'b0100;                     // return: 1 - Minus
+    #46 cond = 4'b0101;                     // return: 0 - Positive or Zero
+    #47 cond = 4'b0110;                     // return: 1 - Overflow
+    #48 cond = 4'b0111;                     // return: 0 - No overflow
+    #49 cond = 4'b1000; #49 Z = 1'b0;        // return: 1 - Unsigned higher
+    #50 cond = 4'b1001;                    // return: 0 - Unsigned lower or same
     #51 cond = 4'b1010;                     // return: 1 - Greater or equal
     #52 cond = 4'b1011; #52 V = 1'b0;       // return: 1 - Less than
     #53 cond = 4'b1100;                     // return: 0 - Greater than
@@ -235,5 +238,56 @@ module test_condition_handler;
   initial begin
     #39 $display ("CH: B cond N Z C V out            Time:");
     #1 $monitor ("    %b %b %b %b %b %b  %b  %d ", B_instr, cond, N, Z, C, V, out, $time); 
+  end
+endmodule
+
+module EX_test;
+  // External inputs
+  reg [31:0] A, B;
+  reg [11:0] I;
+  reg [4:0] Opcode;
+  reg [3:0] ALU_op, cond;
+  reg [2:0] I_cmd;
+  reg shift_imm, B_instr, load_instr, S;
+  // Internal Outputs
+  wire [31:0] ALU_MUX_Out, ALU_Out, SSE_Out, F_Out;
+  wire ALU_N, ALU_Z, ALU_C, ALU_V, Ni, Zi, Ci, Vi, CH_Out; 
+
+  ALU_component AU (ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, A, ALU_MUX_Out, ALU_op, Ci); //instancia ALU
+  shifter_sign_extender SSE (SSE_Out, B, A, I, Opcode, I_cmd);
+  condition_handler CH (CH_Out, cond, B_instr, ALU_N, ALU_Z, ALU_C, ALU_V);
+  ALU_mux AM (ALU_MUX_Out, B, SSE_Out, shift_imm);
+  ALUvsSSE_mux ASM(F_Out, ALU_Out, SSE_Out, load_instr);
+  status_register SR (Ni, Zi, Ci, Vi, ALU_N, ALU_Z, ALU_C, ALU_V, S);
+
+  initial #100 $finish;
+  initial #57 fork
+
+    #1 begin
+      A = 32'b0000_0000_0000_0000_0000_0000_0000_0101;
+      B = 32'b0000_0000_0000_0000_0000_0111_0001_1101;
+      I = 12'b0000_01101010;
+      Opcode = 5'b10101;
+      ALU_op = 4'b0000; 
+      cond = 4'b0000;
+      I_cmd = 3'b001; 
+      shift_imm = 1'b0;
+      S = 1'b0;
+      B_instr = 1'b0;
+      load_instr = 1'b0;
+    end
+    #2 B_instr = 1'b1;
+    #3 shift_imm = 1'b1;
+    #4 load_instr = 1'b1; #4 S = 1'b1;
+    #5 begin
+      A = 32'b0100_0000_0000_0000_0000_0000_0000_0101;
+      B = 32'b0100_0000_0000_0000_0000_0111_0001_1101; 
+      I_cmd = 3'b011;
+    end
+  join
+  initial begin
+    #57 $display ("EX:              A(Rn)                             B(Rm)                    I      I_cmd Opcode            SSE_Out               SI           ALU_MUX_Out            ALU_op Ci             ALU_Out              N Z C V LS               F_Out              BI cond CH_Out S Nf Zf Cf Vf          Time:");
+    #1 $monitor ("    %b %b %b  %b  %b  %b %b  %b  %b  %b  %b %b %b %b %b %b  %b %b  %b   %b    %b %b  %b  %b  %b  %d", A, B, I, I_cmd, Opcode, SSE_Out, shift_imm, 
+    ALU_MUX_Out, ALU_op, Ci, ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, load_instr, F_Out, B_instr, cond, CH_Out, S, Ni, Zi, Ci, Vi, $time);
   end
 endmodule
