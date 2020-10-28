@@ -5,7 +5,7 @@ module control_unit(output reg [3:0] ID_ALU_OP, output reg [1:0] data_size, outp
         ID_ALU_OP = instruction[24:21];
         ID_shift_imm = instruction[25];
         ID_load_instr = ((instruction[27:25] === 3'b010) | (instruction[27:25] === 3'b011)) & instruction[20];
-        ID_RF_enable = (instruction[15:12] == 1'b1)     // If there is a destination register
+        ID_RF_enable = (instruction[15:12] == 1'b1);     // If there is a destination register
         ID_B_instr = (instruction[27:25] === 3'b101);
         // Verify
         RW = ((ID_load_instr) | ~(ID_RF_enable));
