@@ -10,34 +10,23 @@ Note: The multiplexers are mirrored vertically. Top port of Mux A is selected wi
 */
 always @ (*) begin
     //TODO Special Forwarding Cases: Forwarding is only allowed from the stage closest to ID
-    //TODO Not sure if "else" statements are correct (to not forward)
 
-    //EX forwarding
-    if (EX_RF_enable && (ID_Rn === EX_Rd))
+    //Data Forwarding Detection and Handling
+    if (EX_RF_enable && (ID_Rn === EX_Rd)) //EX forwarding
         mux_S_A <= 2'b01; //Forwarding [EX_Rd] to ID
-    else mux_S_A <= 2'b00; //Not forwarding (passing PA from the register file)
-    
-    if (EX_RF_enable && (ID_Rm === EX_Rd))
+    else if (MEM_RF_enable && (ID_Rn === MEM_Rd)) //MEM forwarding
+            mux_S_A <= 2'b10; //Forwarding [MEM_Rd] to ID
+        else if (WB_RF_enable && (ID_Rn === WB_Rd)) //WB forwarding
+                mux_S_A <= 2'b11; //Forwarding [WB_Rd] to ID
+            else mux_S_A <= 2'b00; //Not forwarding (passing PA from the register file)
+
+    if (EX_RF_enable && (ID_Rm === EX_Rd)) //EX forwarding
         mux_S_B <= 2'b01; //Forwarding [EX_Rd] to ID
-    else mux_S_B <= 2'b00; //Not forwarding (passing PB from the register file)
-
-    //MEM forwarding
-    if (MEM_RF_enable && (ID_Rn === MEM_Rd))
-        mux_S_A <= 2'b10; //Forwarding [MEM_Rd] to ID
-    else mux_S_A <= 2'b00; //Not forwarding (passing PA from the register file)
-    
-    if (MEM_RF_enable && (ID_Rm === MEM_Rd))
-        mux_S_B <= 2'b10; //Forwarding [MEM_Rd] to ID
-    else mux_S_B <= 2'b00; //Not forwarding (passing PB from the register file)
-
-    //WB forwarding
-    if (WB_RF_enable && (ID_Rn === WB_Rd))
-        mux_S_A <= 2'b11; //Forwarding [WB_Rd] to ID
-    else mux_S_A <= 2'b00; //Not forwarding (passing PA from the register file)
-    
-    if (WB_RF_enable && (ID_Rm === WB_Rd))
-        mux_S_B <= 2'b11; //Forwarding [WB_Rd] to ID
-    else mux_S_B <= 2'b00; //Not forwarding (passing PB from the register file)
+    else if (MEM_RF_enable && (ID_Rm === MEM_Rd)) //MEM forwarding
+            mux_S_B <= 2'b10; //Forwarding [MEM_Rd] to ID
+        else if (WB_RF_enable && (ID_Rm === WB_Rd)) //WB forwarding
+                mux_S_B <= 2'b11; //Forwarding [WB_Rd] to ID
+            else mux_S_B <= 2'b00; //Not forwarding (passing PB from the register file)
 
     //Detecting and Handling Load Hazard
     if (EX_load_instr && ((ID_Rn === EX_Rd) || (ID_Rm === EX_Rd))) begin
