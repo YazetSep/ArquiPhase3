@@ -6,7 +6,7 @@ input EX_RF_enable, MEM_RF_enable, WB_RF_enable, EX_load_instr);
     01 -> [EX_Rd]
     10 -> [MEM_Rd]
     11 -> [WB_Rd]
-Note: The multiplexers are mirrored vertically. Top port of Mux A is selected with 11 while top port of Mux B is selected with 00.
+Note: The multiplexers are mirrored vertically. Top port of Mux A is selected with 11 while top port of Mux B is selected with 00. (Referring to diagram)
 */
 always @ (*) begin
     //TODO Special Forwarding Cases: Forwarding is only allowed from the stage closest to ID
