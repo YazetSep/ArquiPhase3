@@ -1,5 +1,5 @@
-module control_unit(output reg [3:0] ID_ALU_OP, output reg [1:0] data_size, output reg ID_shift_imm, ID_load_instr, 
-        ID_RF_enable, ID_B_instr, RW, input [31:0] instruction);
+module control_unit(output reg [3:0] ID_ALU_OP, output reg [1:0] data_size, 
+output reg ID_shift_imm, ID_load_instr, ID_RF_enable, ID_B_instr, RW, input [31:0] instruction);
     always @ (instruction)
     begin
         ID_ALU_OP = instruction[24:21];

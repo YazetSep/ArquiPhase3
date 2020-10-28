@@ -1,5 +1,5 @@
 module ALU_component (output reg [31:0] Out, output reg N, Z, C, V, // CC = N, Z, C, V
-      input [31:0] A, B, input [3:0] ALU_op, input Ci); 
+input [31:0] A, B, input [3:0] ALU_op, input Ci); 
   reg temp;
   reg [31:0]tempOut; // For cases where output doesn't matter
   always @ (ALU_op,A,B)
@@ -47,8 +47,8 @@ module ALU_mux(output reg [31:0] Out, input [31:0] B, immed, input shift_imm);
       else Out = B;
 endmodule
 
-module shifter_sign_extender(output reg [31:0] Out, output reg LS, input [31:0] Rm, input[31:0] Rn, 
-      input [11:0] I, input[4:0] Opcode, input [2:0] I_cmd);
+module shifter_sign_extender(output reg [31:0] Out, output reg LS, input [31:0] Rm, 
+input[31:0] Rn, input [11:0] I, input[4:0] Opcode, input [2:0] I_cmd);
   reg temp1;
   always @ (Rm, Rn, I, Opcode, I_cmd)
   begin
