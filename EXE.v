@@ -294,8 +294,8 @@ module EXE_test;
     end
   join
   initial begin
-        #57 $display ("EXE:              A(Rn)                             B(Rm)                    I      I_cmd Opcode            SSE_Out               SI           ALU_MUX_Out            ALU_op Ci             ALU_Out              N Z C V LS               F_Out              S Nf Zf Cf Vf BI cond CH_Out          Time:");
-        #1 $monitor ("     %b %b %b  %b  %b  %b %b  %b  %b  %b  %b %b %b %b %b %b  %b %b %b  %b  %b  %b  %b  %b   %b    %d", A, B, I, I_cmd, Opcode, SSE_Out, shift_imm, 
+    #57 $display ("EXE:              A(Rn)                             B(Rm)                    I      I_cmd Opcode            SSE_Out               SI           ALU_MUX_Out            ALU_op Ci             ALU_Out              N Z C V LS               F_Out              S Nf Zf Cf Vf BI cond CH_Out          Time:");
+    #1 $monitor ("     %b %b %b  %b  %b  %b %b  %b  %b  %b  %b %b %b %b %b %b  %b %b %b  %b  %b  %b  %b  %b   %b    %d", A, B, I, I_cmd, Opcode, SSE_Out, shift_imm, 
     ALU_MUX_Out, ALU_op, Ci, ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, LS, F_Out, S, Ni, Zi, Ci, Vi, B_instr, cond, CH_Out, $time);
   end
 endmodule

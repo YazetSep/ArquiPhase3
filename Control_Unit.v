@@ -10,7 +10,7 @@ module control_unit(output reg [3:0] ID_ALU_OP, output reg [1:0] data_size, outp
         // Verify
         RW = ((ID_load_instr) | ~(ID_RF_enable));
         // TODO
-        data_size = 1'b00;
+        data_size = 2'b00;
         //
     end
 endmodule
