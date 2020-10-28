@@ -47,11 +47,12 @@ module ALU_mux(output reg [31:0] Out, input [31:0] B, immed, input shift_imm);
       else Out = B;
 endmodule
 
-module shifter_sign_extender(output reg [31:0] Out, input [31:0] Rm, input[31:0] Rn, 
+module shifter_sign_extender(output reg [31:0] Out, output reg LS, input [31:0] Rm, input[31:0] Rn, 
       input [11:0] I, input[4:0] Opcode, input [2:0] I_cmd);
   reg temp1;
   always @ (Rm, Rn, I, Opcode, I_cmd)
   begin
+    LS = 1'b0;
     case (I_cmd)
       3'b001 : begin // 32-bit Immediate Shifter Operand : Rotation of immediate
       Out = 32'b0 + I[7:0];
@@ -83,17 +84,25 @@ module shifter_sign_extender(output reg [31:0] Out, input [31:0] Rm, input[31:0]
           end 
         endcase
       end
-      3'b010 : if (Opcode[3]) Out = Rn + I; else Out = Rn - I;  // Load/Store Immediate offset
-      3'b011 : if (Opcode[3]) Out = Rn + Rm; else Out = Rn - Rm;  // Load/Store Register offset
+      3'b010 : begin
+        LS = 1'b1;
+         if (Opcode[3]) Out = Rn + I; 
+         else Out = Rn - I;  // Load/Store Immediate offset
+      end
+      3'b011 : begin
+        LS = 1'b1;
+        if (Opcode[3]) Out = Rn + Rm; 
+        else Out = Rn - Rm;  // Load/Store Register offset
+      end
       default : Out = Rm;
     endcase
   end
 endmodule
 
 // Decides which address to pass onto the MEM stage
-module ALUvsSSE_mux(output reg [31:0] Out, input [31:0] ALU_Out, SSE_Out, input load_instr);
-  always @ (load_instr, ALU_Out, SSE_Out)
-      if (load_instr) Out = SSE_Out;
+module ALUvsSSE_mux(output reg [31:0] Out, input [31:0] ALU_Out, SSE_Out, input LS);
+  always @ (LS, ALU_Out, SSE_Out)
+      if (LS) Out = SSE_Out;
       else Out = ALU_Out;
 endmodule
 
@@ -188,8 +197,8 @@ endmodule
 
 module test_shifter;
   reg [31:0] Rm, Rn; reg [11:0] I; reg[4:0] Opcode; reg [2:0] I_cmd;
-  wire [31:0] Out;
-  shifter_sign_extender sse (Out, Rm, Rn, I, Opcode, I_cmd);
+  wire [31:0] Out; wire LS;
+  shifter_sign_extender sse (Out, LS, Rm, Rn, I, Opcode, I_cmd);
   initial #100 $finish; // Especifica cuando termina simulación
   initial fork
     #31 Rm = 32'b1110_1011_0000_0000_0000_0000_0000_0111;
@@ -205,8 +214,8 @@ module test_shifter;
     #38 I_cmd = 3'b011; #38 Opcode = 5'b11101; // Load/Store Register offset (Adds)
   join
   initial begin
-    #21 $display ("SSE:                Rm                               Rn                     I       I_cmd                Out                    Time:");
-    #10 $monitor ("     %b %b %b  %b  %b %d ", Rm, Rn, I, I_cmd, Out, $time); 
+    #21 $display ("SSE:                Rm                               Rn                     I       I_cmd                Out                LS     Time:");
+    #10 $monitor ("     %b %b %b  %b  %b  %b %d ", Rm, Rn, I, I_cmd, Out, LS, $time); 
   end
 endmodule
 
@@ -248,16 +257,16 @@ module EX_test;
   reg [4:0] Opcode;
   reg [3:0] ALU_op, cond;
   reg [2:0] I_cmd;
-  reg shift_imm, B_instr, load_instr, S;
+  reg shift_imm, B_instr, S;
   // Internal Outputs
   wire [31:0] ALU_MUX_Out, ALU_Out, SSE_Out, F_Out;
-  wire ALU_N, ALU_Z, ALU_C, ALU_V, Ni, Zi, Ci, Vi, CH_Out; 
+  wire LS, ALU_N, ALU_Z, ALU_C, ALU_V, Ni, Zi, Ci, Vi, CH_Out; 
 
-  ALU_component AU (ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, A, ALU_MUX_Out, ALU_op, Ci); //instancia ALU
-  shifter_sign_extender SSE (SSE_Out, B, A, I, Opcode, I_cmd);
-  condition_handler CH (CH_Out, cond, B_instr, ALU_N, ALU_Z, ALU_C, ALU_V);
+  ALU_component AU (ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, A, ALU_MUX_Out, ALU_op, Ci); 
+  shifter_sign_extender SSE (SSE_Out, LS, B, A, I, Opcode, I_cmd);
+  condition_handler CH (CH_Out, cond, B_instr, Ni, Zi, Ci, Vi);
   ALU_mux AM (ALU_MUX_Out, B, SSE_Out, shift_imm);
-  ALUvsSSE_mux ASM(F_Out, ALU_Out, SSE_Out, load_instr);
+  ALUvsSSE_mux ASM(F_Out, ALU_Out, SSE_Out, LS);
   status_register SR (Ni, Zi, Ci, Vi, ALU_N, ALU_Z, ALU_C, ALU_V, S);
 
   initial #100 $finish;
@@ -274,11 +283,10 @@ module EX_test;
       shift_imm = 1'b0;
       S = 1'b0;
       B_instr = 1'b0;
-      load_instr = 1'b0;
     end
     #2 B_instr = 1'b1;
     #3 shift_imm = 1'b1;
-    #4 load_instr = 1'b1; #4 S = 1'b1;
+    #4 S = 1'b1;
     #5 begin
       A = 32'b0100_0000_0000_0000_0000_0000_0000_0101;
       B = 32'b0100_0000_0000_0000_0000_0111_0001_1101; 
@@ -286,8 +294,8 @@ module EX_test;
     end
   join
   initial begin
-    #57 $display ("EX:              A(Rn)                             B(Rm)                    I      I_cmd Opcode            SSE_Out               SI           ALU_MUX_Out            ALU_op Ci             ALU_Out              N Z C V LS               F_Out              BI cond CH_Out S Nf Zf Cf Vf          Time:");
-    #1 $monitor ("    %b %b %b  %b  %b  %b %b  %b  %b  %b  %b %b %b %b %b %b  %b %b  %b   %b    %b %b  %b  %b  %b  %d", A, B, I, I_cmd, Opcode, SSE_Out, shift_imm, 
-    ALU_MUX_Out, ALU_op, Ci, ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, load_instr, F_Out, B_instr, cond, CH_Out, S, Ni, Zi, Ci, Vi, $time);
+    #57 $display ("EX:              A(Rn)                             B(Rm)                    I      I_cmd Opcode            SSE_Out               SI           ALU_MUX_Out            ALU_op Ci             ALU_Out              N Z C V LS               F_Out              S Nf Zf Cf Vf BI cond CH_Out          Time:");
+    #1 $monitor ("    %b %b %b  %b  %b  %b %b  %b  %b  %b  %b %b %b %b %b %b  %b %b %b  %b  %b  %b  %b  %b   %b    %d", A, B, I, I_cmd, Opcode, SSE_Out, shift_imm, 
+    ALU_MUX_Out, ALU_op, Ci, ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, LS, F_Out, S, Ni, Zi, Ci, Vi, B_instr, cond, CH_Out, $time);
   end
 endmodule
