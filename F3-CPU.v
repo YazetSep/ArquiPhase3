@@ -1,8 +1,86 @@
 //////////// Instrcution Fetch (IF) ///////////
 
 /* IF/ID */
+module IFID (output reg [31:0] PC_out, instr_out, input [31:0] PC_in, instr_in, input clk, reset, LE);
+always @(posedge clk, posedge reset) begin
+    if (reset)
+        instr_out <= 0; //Control hazard handling reset
+    else if (LE) begin //LE is used to stall when load hazard is asserted from the Haz/Forw Unit
+        PC_out <= PC_in;
+        instr_out <= instr_in;
+    end
+end
+endmodule
 
 //////////// Instruction Decode (ID) //////////
+
+module x4_Sign_Extender(output reg [31:0] extended, input [23:0] input_instr);
+    always @ (*) begin
+        extended = {{8{1'b0}}, input_instr};
+        extended = extended * 4;
+    end
+endmodule
+
+module Adder (output reg [31:0] DataOut, input [31:0] extended_instr, NextPC);
+    always @ (extended_instr, NextPC)
+        DataOut = extended_instr + NextPC;
+endmodule
+
+//Multiplexers for Forwarding
+module mux_4x1_32Bit (output reg [31:0] Y, input [1:0] S, input [31:0] A, B, C, D);
+    always @ (S, A, B, C, D)
+        case (S)
+        2'b00: Y = A;
+        2'b01: Y = B;
+        2'b10: Y = C;
+        2'b11: Y = D;
+        endcase
+    
+endmodule
+
+module RegisterFile (output [31:0] PuertoA, PuertoB, PC_out, input [31:0] PW, PC_in, input [3:0] RW, RA, RB, input LE, PCLd, Clk);
+    //Outputs: Puertos A, B y PC_out
+    //Inputs: Puerto de Entrada (PW), RW y LE (BinaryDecoder Selector (Registro Destino) y "load"), RA y RB  (Selectors de multiplexers a la salida AKA Source Registers), y Clk
+
+    //Wires
+    wire [15:0] E;
+    wire [31:0] Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15;
+    wire [31:0] mux_PCOut;
+    wire reg15Ld;
+
+    //Instanciando módulos:
+    binaryDecoder bdecoder (E, RW, LE);
+    //Multiplexer for PuertoA
+    mux_16x1_32Bit mux_16x1A (PuertoA, RA, Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9,
+                    Q10, Q11, Q12, Q13, Q14, Q15);
+    //Multiplexer for PuertoB
+    mux_16x1_32Bit mux_16x1B (PuertoB, RB, Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9,
+                    Q10, Q11, Q12, Q13, Q14, Q15);
+    //Multiplexer to control PC_in (Priority writing data instead of writing new PC value)
+    mux_2x1_32Bit mux_2x1PC_in (mux_PCOut, E[15], PW, PC_in);
+    //OR gate to activate load of Register15/PC with Binary Decoder E[15] port or PCLd port
+    or (reg15Ld, E[15], PCLd);
+    //Registers 0 to 15
+    register_32bit R0 (Q0, PW, Clk, E[0]);
+    register_32bit R1 (Q1, PW, Clk, E[1]);
+    register_32bit R2 (Q2, PW, Clk, E[2]);
+    register_32bit R3 (Q3, PW, Clk, E[3]);
+    register_32bit R4 (Q4, PW, Clk, E[4]);
+    register_32bit R5 (Q5, PW, Clk, E[5]);
+    register_32bit R6 (Q6, PW, Clk, E[6]);
+    register_32bit R7 (Q7, PW, Clk, E[7]);
+    register_32bit R8 (Q8, PW, Clk, E[8]);
+    register_32bit R9 (Q9, PW, Clk, E[9]);
+    register_32bit R10 (Q10, PW, Clk, E[10]);
+    register_32bit R11 (Q11, PW, Clk, E[11]);
+    register_32bit R12 (Q12, PW, Clk, E[12]);
+    register_32bit R13 (Q13, PW, Clk, E[13]);
+    register_32bit R14 (Q14, PW, Clk, E[14]);
+    register_32bit R15 (Q15, mux_PCOut, Clk, reg15Ld);//Special Register also functions as Program Counter (PC)
+
+    assign PC_out = Q15;
+
+endmodule
 
 /* ID/EXE */
 
@@ -204,6 +282,53 @@ output reg ID_shift_imm, ID_load_instr, ID_RF_enable, ID_B_instr, RW, input [31:
         // TODO
         data_size = 2'b00;
         //
+    end
+endmodule
+
+module HazForwUnit (output reg [1:0] mux_S_A, mux_S_B, output reg Nop_insertion_S, IFID_enable, PC_enable,
+input [3:0] EX_Rd, MEM_Rd, WB_Rd, ID_Rn, ID_Rm, 
+input EX_RF_enable, MEM_RF_enable, WB_RF_enable, EX_load_instr);
+    /*Mux A and Mux B Cheat Sheet:
+        00 -> PA/PB Original Register File Outputs
+        01 -> [EX_Rd]
+        10 -> [MEM_Rd]
+        11 -> [WB_Rd]
+    Note: The multiplexers are mirrored vertically. Top port of Mux A is selected with 11 while top port of Mux B is selected with 00. (Referring to diagram)
+    */
+    always @ (*) begin
+        //TODO Special Forwarding Cases: Forwarding is only allowed from the stage closest to ID
+    
+        //Data Forwarding Detection and Handling
+        if (EX_RF_enable && (ID_Rn === EX_Rd)) //EX forwarding
+            mux_S_A <= 2'b01; //Forwarding [EX_Rd] to ID
+        else if (MEM_RF_enable && (ID_Rn === MEM_Rd)) //MEM forwarding
+                mux_S_A <= 2'b10; //Forwarding [MEM_Rd] to ID
+            else if (WB_RF_enable && (ID_Rn === WB_Rd)) //WB forwarding
+                    mux_S_A <= 2'b11; //Forwarding [WB_Rd] to ID
+                else mux_S_A <= 2'b00; //Not forwarding (passing PA from the register file)
+    
+        if (EX_RF_enable && (ID_Rm === EX_Rd)) //EX forwarding
+            mux_S_B <= 2'b01; //Forwarding [EX_Rd] to ID
+        else if (MEM_RF_enable && (ID_Rm === MEM_Rd)) //MEM forwarding
+                mux_S_B <= 2'b10; //Forwarding [MEM_Rd] to ID
+            else if (WB_RF_enable && (ID_Rm === WB_Rd)) //WB forwarding
+                    mux_S_B <= 2'b11; //Forwarding [WB_Rd] to ID
+                else mux_S_B <= 2'b00; //Not forwarding (passing PB from the register file)
+    
+        //Detecting and Handling Load Hazard
+        if (EX_load_instr && ((ID_Rn === EX_Rd) || (ID_Rm === EX_Rd))) begin
+            //Hazard asserted
+            Nop_insertion_S <= 1'b0; //Forward control signals corresponding to a nop instruction
+            IFID_enable <= 1'b0; //Disable IF/ID pipeline register from loading
+            PC_enable <= 1'b0; //Disable load enable of the program counter
+        end
+        else begin
+            //Hazard not asserted
+            Nop_insertion_S <= 1'b1;
+            IFID_enable <= 1'b1;
+            PC_enable <= 1'b1;
+        end
+    
     end
 endmodule
 
