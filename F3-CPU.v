@@ -246,7 +246,8 @@ endmodule
 
 /* EXE/MEM */
 
-module EXE_MEM_Pipeline(output reg [31:0]DataMemIn, output reg [31:0]AddressDataOut, output reg [3:0]Rd_Out, output reg [1:0]DataSizeOut, output reg LoadInst, output reg RF_EN, input [1:0]DataSizeIn, input [31:0]ALU_Out, input N, Z, C, V, input [31:0]DataIn, input [3:0]Rd_In, input LI, input RF_Enable)
+module EXE_MEM_Pipeline(output reg [31:0] DataMemIn, AddressDataOut, output reg [3:0]Rd_Out, output reg [1:0]DataSizeOut, output reg LoadInst, RF_EN, 
+input [31:0]ALU_Out, DataIn, input [3:0] Rd_In, input [1:0]DataSizeIn, input LI, RF_Enable, N, Z, C, V, clk);
     always @(posedge clk)
     begin
         DataMemIn <= DataIn;
