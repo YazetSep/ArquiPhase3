@@ -1,4 +1,4 @@
-module memory(output reg [31:0]DataOut, output reg [31:0]AddressOut, output reg [31:0]MuxOut, input [31:0]DataIn, input [31:0]AddressIn, input RW, input [1:0]DataSize, input MuxController, input Enable)
+module memory(output reg [31:0]DataOut, AddressOut, MuxOut, input [31:0]DataIn, AddressIn, input RW, input [1:0]DataSize, input MuxController, Enable);
 always @(*)
     begin
         ram256x32_data dataRam (DataOut, Enable, RW, DataIn, AddressIn, DataSize);

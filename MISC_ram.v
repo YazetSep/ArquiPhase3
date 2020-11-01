@@ -14,7 +14,7 @@ module ram256x32_inst(output reg [31:0]DataOut, input Enable, input [31:0]Instru
 
 endmodule
 
-module ram256x32_data(output reg [31:0]DataOut, input Enable, ReadWrite, input[31:0]DataIn, input [31:0]Address, input [1:0]DataSize);
+module ram256x32_data(output reg [31:0]DataOut, input Enable, ReadWrite, input[31:0]DataIn, Address, input [1:0]DataSize);
 
     reg [31:0]Mem[0:255];
 

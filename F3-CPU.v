@@ -1,14 +1,45 @@
 //////////// Instrcution Fetch (IF) ///////////
 
+module inst_fetch(output reg [31:0]DataOut, output reg [31:0]NextPC, output reg [31:0]PC_In, input [31:0]TargetAddress, input [31:0]PC, input condition_handler_in)
+    always@(*)
+        begin
+            ram256x32_inst ram1 (DataOut, 1'b1, PC);
+            NextPC = PC + 4;
+            mux_2x1_32Bit mux (PC_In, condition_handler_in, NextPC, TargetAddress);   
+        end
+endmodule
+
+module mux_2x1_32Bit (output reg [31:0] Y, input S, input [31:0] A, B);
+    always @ (*)
+        if (!S) Y = B;
+        else Y = A;
+endmodule
+
+module ram256x32_inst(output reg [31:0]DataOut, input Enable, input [31:0]Instruction);
+
+    reg [31:0]Mem[0:255];
+    reg [7:0]Address;
+    Address = 8'b00000000
+
+    always @(*)
+        if(Enable)
+        begin
+            Mem[Address] = Instruction;
+            DataOut = Mem[Address]; //Always in Read Mode
+            Address = Address + 1;
+        end
+
+endmodule
+
 /* IF/ID */
 module IFID (output reg [31:0] PC_out, instr_out, input [31:0] PC_in, instr_in, input clk, reset, LE);
-always @(posedge clk, posedge reset) begin
-    if (reset)
-        instr_out <= 0; //Control hazard handling reset
-    else if (LE) begin //LE is used to stall when load hazard is asserted from the Haz/Forw Unit
-        PC_out <= PC_in;
-        instr_out <= instr_in;
-    end
+    always @(posedge clk, posedge reset) begin
+        if (reset)
+            instr_out <= 0; //Control hazard handling reset
+        else if (LE) begin //LE is used to stall when load hazard is asserted from the Haz/Forw Unit
+            PC_out <= PC_in;
+            instr_out <= instr_in;
+        end
 end
 endmodule
 
@@ -330,6 +361,87 @@ endmodule
 
 ///////////////// Memory (MEM) ///////////////
 
+module ram256x32_data(output reg [31:0]DataOut, input Enable, ReadWrite, input[31:0]DataIn, Address, input [1:0]DataSize);
+
+    reg [31:0]Mem[0:255];
+
+    always @(*)
+    begin
+        if(Enable)
+            begin
+            reg [31:0]DataTemp;
+            case (DataSize)
+                //Byte
+                2'b00:  if (!ReadWrite) 
+                        begin //Read - Load
+                            integer i;
+                            DataOut = 32'b00000000000000000000000000000000;
+                            DataTemp = Mem[Address]
+                            for(i = 0; i < 8; i=i+1)
+                            begin
+                                DataOut[i] = DataTemp[i];
+                            end
+                        end 
+                        else 
+                            begin //Write - Store
+                                Mem[Address] = 32'b00000000000000000000000000000000;
+                                DataTemp = 32'b00000000000000000000000000000000;
+                                integer i;
+                                for(i = 0; i < 8; i=i+1)
+                                begin
+                                    DataTemp[i] = DataIn[i];
+                                end
+                                Mem[Address] = DataTemp;
+                            end
+                //Half-Word
+                2'b01:  if (!ReadWrite) 
+                        begin //Read - Load
+                            integer i;
+                            DataOut = 32'b00000000000000000000000000000000;
+                            DataTemp = Mem[Address]
+                            for(i = 0; i < 15; i=i+1)
+                            begin
+                                DataOut[i] = DataTemp[i];
+                            end
+                        end 
+                        else 
+                            begin //Write - Store
+                                Mem[Address] = 32'b00000000000000000000000000000000;
+                                DataTemp = 32'b00000000000000000000000000000000;
+                                integer i;
+                                for(i = 0; i < 8; i=i+1)
+                                begin
+                                    DataTemp[i] = DataIn[i];
+                                end
+                                Mem[Address] = DataTemp;
+                            end
+                //Word
+                2'b10: if (!ReadWrite) 
+                    begin //Read - Load
+                        DataOut = Mem[Address];
+                    end 
+                    else 
+                        begin //Write - Store
+                            Mem[Address] = DataIn;
+                        end
+                //Double Word
+                2b'11: if (!ReadWrite) 
+                    begin //Read - Load
+                        DataOut = Mem[Address];
+                        #5;
+                        DataOut = Mem[Address+1];
+                    end 
+                    else 
+                        begin //Write - Store
+                            Mem[Address] = DataIn;
+                            #5;
+                            Mem[Address+1] = DataIn;
+                        end
+            endcase
+            end
+    end
+endmodule
+
 /* MEM/WB */
 
 /////////////// Write-Back (WB) //////////////
@@ -407,4 +519,19 @@ endmodule
 //#########//
 
 module test_CPU;
+    reg instruction;
+    // WIRES //
+
+    //
+
+    initial #100 $finish; // Especifica cuando termina simulación  
+    initial fork
+
+    join
+
+    initial begin
+        $display ("ALU: Oper              A(b)                    A(d)                 B(b)                    B(d)                Out(b)                 Out(d)  Ci S N Z C V    Time:");
+        #1 $monitor ("     %b %b %d %b %d  %b %d %b  %b %b %b %b %b %d", ALU_op, A, A,
+        B, B, Out, Out, Ci, S, N, Z, C, V, $time);
+    end
 endmodule
