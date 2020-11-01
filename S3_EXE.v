@@ -299,3 +299,20 @@ module EXE_test;
     ALU_MUX_Out, ALU_op, Ci, ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, LS, F_Out, S, Ni, Zi, Ci, Vi, B_instr, cond, CH_Out, $time);
   end
 endmodule
+
+
+// module test_SR;
+//   reg S, N, Z, C, V;
+//   wire Nf, Zf, Cf, Vf;
+//   status_register SR(Nf, Zf, Cf, Vf, N, Z, C, V, S);
+//   initial #100 $finish; // Especifica cuando termina simulación
+//   initial fork
+//     N = 1'b0; Z = 1'b1; C = 1'b1; V = 1'b0;
+//     S = 1'b0;
+//     #1 S = 1'b1;
+//   join
+//   initial begin
+//     $display ("SR: N Z C V S  Nf Zf Cf Vf           Time:");
+//     $monitor ("    %b %b %b %b %b  %b  %b  %b  %b  %d ", N, Z, C, V, S, Nf, Zf, Cf, Vf,  $time); 
+//   end
+// endmodule
