@@ -1,44 +1,71 @@
 //////////// Instrcution Fetch (IF) ///////////
-
-module inst_fetch(output reg [31:0]DataOut, output reg [31:0]NextPC, output reg [31:0]PC_In, input [31:0]TargetAddress, input [31:0]PC, input condition_handler_in)
-    always@(*)
+module inst_fetch(output reg [31:0]DataOut, output reg [31:0]NextPC, output reg [31:0]PC_In, input [31:0]TargetAddress, input [31:0]PC, input condition_handler_in, input EN, clk);
+    wire [31:0]DOut;
+    wire [31:0]MOut;
+    
+    ram256x32_inst ram1 (DOut, 1'b1, PC);
+    
+    mux_2x1_32Bit mux (MOut, condition_handler_in, NextPC, TargetAddress);
+    
+    initial DataOut = 32'b0;
+    
+    always @(posedge EN)
+    begin
+        //NextPC <= 4;
+        //#1 $display("NPC: %b", NextPC);
+        #1 DataOut <= ram1.Mem[0];
+        NextPC <= 32'b100;
+        PC_In <= 32'b100;
+        //#1 $display("PC IN: %b", PC_In);
+    end
+    
+    always @(TargetAddress, PC, condition_handler_in, posedge clk)
         begin
-            ram256x32_inst ram1 (DataOut, 1'b1, PC);
-            NextPC = PC + 4;
-            mux_2x1_32Bit mux (PC_In, condition_handler_in, NextPC, TargetAddress);   
+            NextPC <= PC + 4;
+            DataOut <= DOut;
+            PC_In <= MOut;
         end
 endmodule
 
 module mux_2x1_32Bit (output reg [31:0] Y, input S, input [31:0] A, B);
     always @ (*)
-        if (!S) Y = B;
-        else Y = A;
+    begin
+        Y <= A;
+        // if (S) Y = B;
+        
+    end
 endmodule
 
-module ram256x32_inst(output reg [31:0]DataOut, input Enable, input [31:0]Instruction);
+module ram256x32_inst(output reg [31:0]DataOut, input Enable, input [31:0]PC);
 
     reg [31:0]Mem[0:255];
-    reg [7:0]Address;
-    Address = 8'b00000000
-
+    //reg [7:0]Address = 8'b00000000;
+    
     always @(*)
         if(Enable)
         begin
-            Mem[Address] = Instruction;
-            DataOut = Mem[Address]; //Always in Read Mode
-            Address = Address + 1;
+            DataOut = Mem[PC]; //Always in Read Mode
+            //Address = Address + 1;
         end
 
 endmodule
-
+//verify - switch
 /* IF/ID */
-module IFID (output reg [31:0] PC_out, instr_out, input [31:0] PC_in, instr_in, input clk, reset, LE);
-    always @(posedge clk, posedge reset) begin
-        if (reset)
-            instr_out <= 0; //Control hazard handling reset
-        else if (LE) begin //LE is used to stall when load hazard is asserted from the Haz/Forw Unit
-            PC_out <= PC_in;
-            instr_out <= instr_in;
+module IFID (output reg [31:0] PC_out, instr_out, input [31:0] PC_in, instr_in, input clk, CH_reset, LE, totalReset);
+  
+    always @ (posedge totalReset) begin
+      PC_out <= 0;
+      instr_out <= 0;
+    end
+  
+    always @(posedge clk) begin
+      PC_out <= PC_in;
+      instr_out <= instr_in;  
+      if (CH_reset)
+            instr_out <= 32'b0; //Control hazard handling reset
+      else if (~(LE)) begin //LE is used to stall when load hazard is asserted from the Haz/Forw Unit
+            PC_out <= 32'b0;
+            instr_out <= 32'b0;
         end
 end
 endmodule
@@ -70,7 +97,7 @@ module mux_4x1_32Bit (output reg [31:0] Y, input [1:0] S, input [31:0] A, B, C, 
 endmodule
 
 //--------------Register File-----------------------
-module RegisterFile (output [31:0] PuertoA, PuertoB, PC_out, input [31:0] PW, PC_in, input [3:0] RW, RA, RB, input LE, PCLd, Clk);
+module RegisterFile (output [31:0] PuertoA, PuertoB, PC_out, input [31:0] PW, PC_in, input [3:0] RW, RA, RB, input LE, PCLd, Clk, reset);
     //Outputs: Puertos A, B y PC_out
     //Inputs: Puerto de Entrada (PW), RW y LE (BinaryDecoder Selector (Registro Destino) y "load"), RA y RB  (Selectors de multiplexers a la salida AKA Source Registers), y Clk
 
@@ -93,25 +120,25 @@ module RegisterFile (output [31:0] PuertoA, PuertoB, PC_out, input [31:0] PW, PC
     //OR gate to activate load of Register15/PC with Binary Decoder E[15] port or PCLd port
     or (reg15Ld, E[15], PCLd);
     //Registers 0 to 15
-    register_32bit R0 (Q0, PW, Clk, E[0]);
-    register_32bit R1 (Q1, PW, Clk, E[1]);
-    register_32bit R2 (Q2, PW, Clk, E[2]);
-    register_32bit R3 (Q3, PW, Clk, E[3]);
-    register_32bit R4 (Q4, PW, Clk, E[4]);
-    register_32bit R5 (Q5, PW, Clk, E[5]);
-    register_32bit R6 (Q6, PW, Clk, E[6]);
-    register_32bit R7 (Q7, PW, Clk, E[7]);
-    register_32bit R8 (Q8, PW, Clk, E[8]);
-    register_32bit R9 (Q9, PW, Clk, E[9]);
-    register_32bit R10 (Q10, PW, Clk, E[10]);
-    register_32bit R11 (Q11, PW, Clk, E[11]);
-    register_32bit R12 (Q12, PW, Clk, E[12]);
-    register_32bit R13 (Q13, PW, Clk, E[13]);
-    register_32bit R14 (Q14, PW, Clk, E[14]);
-    register_32bit R15 (Q15, mux_PCOut, Clk, reg15Ld);//Special Register also functions as Program Counter (PC)
+    register_32bit R0 (Q0, PW, Clk, E[0], reset);
+    register_32bit R1 (Q1, PW, Clk, E[1], reset);
+    register_32bit R2 (Q2, PW, Clk, E[2], reset);
+    register_32bit R3 (Q3, PW, Clk, E[3], reset);
+    register_32bit R4 (Q4, PW, Clk, E[4], reset);
+    register_32bit R5 (Q5, PW, Clk, E[5], reset);
+    register_32bit R6 (Q6, PW, Clk, E[6], reset);
+    register_32bit R7 (Q7, PW, Clk, E[7], reset);
+    register_32bit R8 (Q8, PW, Clk, E[8], reset);
+    register_32bit R9 (Q9, PW, Clk, E[9], reset);
+    register_32bit R10 (Q10, PW, Clk, E[10], reset);
+    register_32bit R11 (Q11, PW, Clk, E[11], reset);
+    register_32bit R12 (Q12, PW, Clk, E[12], reset);
+    register_32bit R13 (Q13, PW, Clk, E[13], reset);
+    register_32bit R14 (Q14, PW, Clk, E[14], reset);
+    register_32bit R15 (Q15, PC_in, Clk, reg15Ld, reset);//Special Register also functions as Program Counter (PC)
 
     assign PC_out = Q15;
-
+    
 endmodule
 
 module mux_16x1_32Bit (output reg [31:0] Y, input [3:0] S, 
@@ -144,12 +171,6 @@ module mux_2x1_OneBit (output reg Y, input S, A, B);
         else Y = A;
 endmodule
 
-module mux_2x1_32Bit (output reg [31:0] Y, input S, input [31:0] A, B);
-    always @ (S, A, B)
-        if (!S) Y = B;
-        else Y = A;
-endmodule
-
 module binaryDecoder (output reg [15:0] E, input [3:0] C, input RF);
     always @ (C, RF)
         if (!RF) E = 0;
@@ -176,17 +197,35 @@ module binaryDecoder (output reg [15:0] E, input [3:0] C, input RF);
         end
 endmodule
 
-module register_32bit (output reg [31:0] Q, input [31:0] D, input Clk, Ld);
-    always @ (posedge Clk)
+module register_32bit (output reg [31:0] Q, input [31:0] D, input Clk, Ld, reset);
+    always @ (posedge reset)
+        Q <= 0;
+    always @ (negedge Clk)
         if(Ld) Q <= D;
 endmodule
 
 /* ID/EXE */
 
-module ID_EXE_pipeline(output reg [31:0] EXE_In, EXE_A, EXE_B, output reg [11:0] EXE_immed, output reg [4:0] EXE_Opcode, 
-output reg [3:0] EXE_Rd_num, output reg [2:0] EXE_I_cmd, output reg EXE_S, input [31:0] ID_A, ID_B, instruction, input clk);
+module ID_EXE_pipeline(output reg [31:0] EXE_In, EXE_A, EXE_B, output reg [11:0] EXE_immed, output reg [4:0] EXE_Opcode, output reg [3:0] EXE_Rd_num, EXE_ALU_OP, output reg [2:0] EXE_I_cmd, 
+                       output reg EXE_S, EXE_shift_imm, EXE_load_instr, EXE_RF_enable, output reg [1:0] EXE_DataSize ,input [31:0] ID_A, ID_B, instruction, input[3:0] ID_ALU_OP, input ID_shift_imm, ID_load_instr, ID_RF_enable, clk, input [1:0] ID_DataSize, input reset);
+    always @(posedge reset) begin
+    EXE_In <= 0;
+        EXE_A <= 0;
+        EXE_B <= 0;
+        EXE_immed <= 0;
+        EXE_Opcode <= 0;
+        EXE_Rd_num <= 0;
+        EXE_I_cmd <= 0;
+        EXE_S <= 0;
+        EXE_shift_imm <= 0;
+        EXE_ALU_OP <= 0;
+        EXE_load_instr <= 0;
+        EXE_RF_enable <= 0;
+    end
+    
     always @ (posedge clk)
     begin
+        
         EXE_In <= ID_A;
         EXE_A <= ID_A;
         EXE_B <= ID_B;
@@ -195,6 +234,11 @@ output reg [3:0] EXE_Rd_num, output reg [2:0] EXE_I_cmd, output reg EXE_S, input
         EXE_Rd_num <= instruction[15:12];
         EXE_I_cmd <= instruction[27:25];
         EXE_S <= instruction[20];
+        EXE_shift_imm <= ID_shift_imm;
+        EXE_ALU_OP <= ID_ALU_OP;
+        EXE_load_instr <= ID_load_instr;
+        EXE_RF_enable <= ID_RF_enable;
+        
     end
 endmodule 
 
@@ -345,130 +389,203 @@ endmodule
 
 /* EXE/MEM */
 
-module EXE_MEM_Pipeline(output reg [31:0] DataMemIn, AddressDataOut, output reg [3:0]Rd_Out, output reg [1:0]DataSizeOut, output reg LoadInst, RF_EN, 
-input [31:0]ALU_Out, DataIn, input [3:0] Rd_In, input [1:0]DataSizeIn, input LI, RF_Enable, N, Z, C, V, clk);
+module EXE_MEM_Pipeline(output reg [31:0] DataMemIn, AddressDataOut, output reg [3:0]Rd_Out, output reg [1:0]DataSizeOut, output reg LoadInst, RF_EN, MEM_LS,
+                        input [31:0]ALU_Out, DataIn, input [3:0] Rd_In, input [1:0]DataSizeIn, input LI, RF_Enable, EXE_LS, N, Z, C, V, clk, reset);
+    
+    always @(posedge reset) begin
+        DataMemIn <= 0;
+        AddressDataOut <= 0;
+        LoadInst <= 0;
+        RF_EN <= 0;
+        DataSizeOut <= 0;
+        Rd_Out <= 0;
+        MEM_LS <= 0;
+    end
+    
     always @(posedge clk)
     begin
+   
         DataMemIn <= DataIn;
         AddressDataOut <= ALU_Out;
         LoadInst <= LI;
         RF_EN <= RF_Enable;
         DataSizeOut <= DataSizeIn;
         Rd_Out <= Rd_In;
+        MEM_LS <= EXE_LS;
+      
+    
     end
     
 endmodule
 
 ///////////////// Memory (MEM) ///////////////
 
-module ram256x32_data(output reg [31:0]DataOut, input Enable, ReadWrite, input[31:0]DataIn, Address, input [1:0]DataSize);
+module memory(output reg [31:0]DataOut, AddressOut, MuxOut, input [31:0]DataIn, AddressIn, input RW, input [1:0]DataSize, input MuxController, Enable);
+
+    wire [31:0]DOut;
+    wire [31:0]AOut;
+    wire [31:0]MOut;
+
+    ram256x32_data dataRam (DOut, Enable, RW, DataIn, AddressIn, DataSize);
+    mux_2x1_32Bit mux (MOut, MuxController, DOut, AOut);
+
+    always @(*)
+        begin
+            AddressOut = AddressIn;
+            #1 DataOut = DOut;
+            #1 AddressOut = AOut;
+            #1 MuxOut = MOut;
+        end
+endmodule
+
+module ram256x32_data(output reg [31:0]DataOut, input Enable, ReadWrite, input[31:0]DataIn, input [31:0]Address, input [1:0]DataSize);
 
     reg [31:0]Mem[0:255];
-
+    reg [31:0]DataTemp;
     always @(*)
     begin
         if(Enable)
-            begin
-            reg [31:0]DataTemp;
             case (DataSize)
                 //Byte
-                2'b00:  if (!ReadWrite) 
-                        begin //Read - Load
-                            integer i;
-                            DataOut = 32'b00000000000000000000000000000000;
-                            DataTemp = Mem[Address]
-                            for(i = 0; i < 8; i=i+1)
-                            begin
-                                DataOut[i] = DataTemp[i];
-                            end
-                        end 
-                        else 
-                            begin //Write - Store
-                                Mem[Address] = 32'b00000000000000000000000000000000;
-                                DataTemp = 32'b00000000000000000000000000000000;
-                                integer i;
-                                for(i = 0; i < 8; i=i+1)
-                                begin
-                                    DataTemp[i] = DataIn[i];
-                                end
-                                Mem[Address] = DataTemp;
-                            end
+                2'b00 : if (ReadWrite) begin : named_block1 //Read - Load named_block:
+                             integer i;
+                             DataOut = 32'b0;
+                             DataTemp = Mem[Address];
+                             for(i = 0; i <= 7; i=i+1)
+                             begin
+                                 DataOut[i] = DataTemp[i];
+                             end
+                         end 
+                         else 
+                             begin : named_block2//Write - Store
+                                 integer i;
+                                 Mem[Address] = 32'b0;
+                                 DataTemp = 32'b0;
+                                 for(i = 0; i <= 7; i=i+1)
+                                 begin
+                                     DataTemp[i] = DataIn[i];
+                                 end
+                                 Mem[Address] = DataTemp;
+                             end
                 //Half-Word
-                2'b01:  if (!ReadWrite) 
-                        begin //Read - Load
+                2'b01 : if (ReadWrite) begin : named_block3 //Read - Load
                             integer i;
-                            DataOut = 32'b00000000000000000000000000000000;
-                            DataTemp = Mem[Address]
-                            for(i = 0; i < 15; i=i+1)
+                            DataOut = 32'b0;
+                            DataTemp = Mem[Address];
+                            for(i = 0; i <= 15; i=i+1)
                             begin
                                 DataOut[i] = DataTemp[i];
                             end
                         end 
                         else 
-                            begin //Write - Store
-                                Mem[Address] = 32'b00000000000000000000000000000000;
-                                DataTemp = 32'b00000000000000000000000000000000;
+                            begin : named_block4 //Write - Store
                                 integer i;
-                                for(i = 0; i < 8; i=i+1)
+                                Mem[Address] = 32'b0;
+                                DataTemp = 32'b0;
+                                for(i = 0; i <= 15; i=i+1)
                                 begin
                                     DataTemp[i] = DataIn[i];
                                 end
                                 Mem[Address] = DataTemp;
                             end
                 //Word
-                2'b10: if (!ReadWrite) 
-                    begin //Read - Load
-                        DataOut = Mem[Address];
-                    end 
-                    else 
-                        begin //Write - Store
-                            Mem[Address] = DataIn;
-                        end
+                2'b10 : if (ReadWrite) 
+                        begin //Read - Load
+                            DataOut = Mem[Address];
+                        end 
+                        else 
+                            begin //Write - Store
+                                Mem[Address] = DataIn;
+                            end
                 //Double Word
-                2b'11: if (!ReadWrite) 
-                    begin //Read - Load
-                        DataOut = Mem[Address];
-                        #5;
-                        DataOut = Mem[Address+1];
-                    end 
-                    else 
-                        begin //Write - Store
-                            Mem[Address] = DataIn;
-                            #5;
-                            Mem[Address+1] = DataIn;
-                        end
+                2'b11 : if (ReadWrite) 
+                        begin //Read - Load
+                            DataOut = Mem[Address];
+                            #1;
+                            DataOut = Mem[Address+1];
+                        end 
+                        else 
+                            begin //Write - Store
+                                Mem[Address] = DataIn;
+                                #1;
+                                Mem[Address+1] = DataIn;
+                            end
             endcase
-            end
     end
 endmodule
-
 /* MEM/WB */
+
+module MEM_WB_Pipeline(output reg [31:0]DataOut, output reg [31:0]NonLoadDataOut, output reg [3:0]Rd_Out, output reg LoadInst, output reg RF_EN, input [31:0]MuxLoadDataIn, input [31:0]MuxNonLoadDataIn, input [3:0]Rd_In, input LI, RF_Enable, clk, reset);
+
+    always @(posedge reset) begin
+    DataOut <= 0;
+        NonLoadDataOut <= 0;
+        Rd_Out <= 0;
+        LoadInst <= 0;
+        RF_EN <= 0;
+    end
+
+    always @(posedge clk)
+    begin
+
+        DataOut <= MuxLoadDataIn;
+        NonLoadDataOut <= MuxNonLoadDataIn;
+        Rd_Out <= Rd_In;
+        LoadInst <= LI;
+        RF_EN <= RF_Enable;
+
+end
+
+endmodule
 
 /////////////// Write-Back (WB) //////////////
 
+module writeback (output reg [31:0]DataOut, input [31:0]AddressIn, input[31:0]DataIn, input LoadInst);
+    wire [31:0]DOut;
+
+    mux_2x1_32Bit mux (DOut, LoadInst, DataIn, AddressIn);
+    always @(*)
+    begin
+        DataOut = DOut;
+
+    end
+
+endmodule
 
 //######### Miscellaneous ##########//
 
 module control_unit(output reg [3:0] ID_ALU_OP, output reg [1:0] data_size, 
-output reg ID_shift_imm, ID_load_instr, ID_RF_enable, ID_B_instr, RW, input [31:0] instruction);
+output reg ID_shift_imm, ID_load_instr, ID_RF_enable, ID_B_instr, input [31:0] instruction);
     always @ (instruction)
     begin
         ID_ALU_OP = instruction[24:21];
         ID_shift_imm = instruction[25];
         ID_load_instr = ((instruction[27:25] === 3'b010) | (instruction[27:25] === 3'b011)) & instruction[20];
-        ID_RF_enable = (instruction[15:12] == 1'b1);     // If there is a destination register
         ID_B_instr = (instruction[27:25] === 3'b101);
-        // Verify
-        RW = ((ID_load_instr) | ~(ID_RF_enable));
-        // TODO
+      	ID_RF_enable = (instruction[15:12] != 0) && ~(ID_B_instr) & ~(((instruction[27:25] === 3'b010) | (instruction[27:25] === 3'b011)) & ~(instruction[20]));     // If there is a destination register
         data_size = 2'b00;
         //
     end
 endmodule
 
+module CU_Mux (output reg [3:0] ID_ALU_OP, output reg ID_shift_imm, ID_load_instr, ID_RF_enable, input [3:0] ID_ALU_OP_CU, input ID_shift_imm_CU, ID_load_instr_CU, ID_RF_enable_CU, S);
+  always @ (*)
+    begin
+      ID_ALU_OP = ID_ALU_OP_CU;
+      ID_shift_imm = ID_shift_imm_CU;
+      ID_load_instr = ID_load_instr_CU;
+      ID_RF_enable = ID_RF_enable_CU;
+      if (~(S)) begin
+      	ID_ALU_OP = 4'b0;
+      	ID_shift_imm = 1'b0;
+      	ID_load_instr = 1'b0;
+      	ID_RF_enable = 1'b0;
+    	end
+    end
+endmodule
+
 module HazForwUnit (output reg [1:0] mux_S_A, mux_S_B, output reg Nop_insertion_S, IFID_enable, PC_enable,
-input [3:0] EX_Rd, MEM_Rd, WB_Rd, ID_Rn, ID_Rm, 
-input EX_RF_enable, MEM_RF_enable, WB_RF_enable, EX_load_instr);
+input [3:0] EX_Rd, MEM_Rd, WB_Rd, ID_Rn, ID_Rm, input EX_RF_enable, MEM_RF_enable, WB_RF_enable, EX_load_instr);
     /*Mux A and Mux B Cheat Sheet:
         00 -> PA/PB Original Register File Outputs
         01 -> [EX_Rd]
@@ -509,7 +626,6 @@ input EX_RF_enable, MEM_RF_enable, WB_RF_enable, EX_load_instr);
             IFID_enable <= 1'b1;
             PC_enable <= 1'b1;
         end
-    
     end
 endmodule
 
@@ -519,19 +635,143 @@ endmodule
 //#########//
 
 module test_CPU;
-    reg instruction;
-    // WIRES //
+  //reg [31:0] instruction; 
+  reg clk;
+  reg EN = 1'b0;
+    ////// WIRES //////
+   // IF wires
+  wire [31:0] IF_DataOut, IF_NextPC, IF_PC_In;
 
-    //
+  	// ID wires
+  //reg [31:0] ID_PC_out; 
+  wire [31:0] ID_PC_out;
+  wire [31:0]RegPC_Out;
+  wire [31:0]ID_instr_out; // IF/ID Pipeline
+  wire [31:0] PA, PB; //Register File
+  wire [31:0] extended; //X4 Sign Extender
+  wire [31:0] ID_TargetAdress; //Adder output (extended + ID_PC_out)
+  wire [31:0] ID_mux_A_out, ID_mux_B_out; //Multiplexers used for forwarding
+  // Control Unit
+  wire [3:0] ID_ALU_OP_CU;
+  wire [1:0] ID_data_size;
+  wire ID_shift_imm_CU, ID_load_instr_CU, ID_RF_enable_CU, ID_B_instr, ID_RW;
+  // Control Unit Mux
+  wire [3:0] ID_ALU_OP;
+  wire ID_shift_imm, ID_load_instr, ID_RF_enable;
+         
+  	// EXE wires
+  // ID/EXE Pipeline Register
+  wire [31:0] EXE_In, EXE_A, EXE_B;
+  wire [11:0] EXE_immed;
+  wire [4:0] EXE_Opcode;
+  wire [3:0] EXE_Rd_num, EXE_ALU_OP;
+  wire [2:0] EXE_I_cmd;
+  wire EXE_S, EXE_shift_imm, EXE_load_instr, EXE_PR_enable;
+  wire [1:0]EXE_DataSize;
+  // Shifter/Sign Extender
+  wire [31:0]EXE_SSE_Out;
+  wire EXE_LS;
+  // Pre-ALU Mux
+  wire [31:0] EXE_ALU_MUX_Out;
+  // ALU component
+  wire [31:0] EXE_ALU_Out;
+  wire ALU_N, ALU_Z, ALU_C, ALU_V;
+  // ALUvsSSE Mux
+  wire [31:0] EXE_ALUvsSSE_MUX_Out;
+  // Status Register
+  wire SR_N, SR_Z, SR_C, SR_V;
+  // Condition Handler
+  wire EXE_CH_Out;
+  
+  	// MEM wires
+  // EXE/MEM Pipeline
+  wire [31:0] MEM_DataMemIn, MEM_AddressDataOut;
+  wire [3:0] MEM_Rd_Out;
+  wire [1:0] MEM_DataSizeOut;
+  wire MEM_LoadInst, MEM_RF_EN;
+  //DATA MEM
+  wire [31:0]MEM_DataOut, MEM_AddressOut, MEM_MuxOut;
+  
+  
+  	// WB wires
+  //MEM/WB Pipeline
+  wire [31:0]WB_LoadDataOut, WB_NonLoadDataOut;
+  wire [3:0]WB_RdOut;
+  wire WB_LoadInst, WB_RF_EN;
+  //WB Mux
+  wire [31:0] WB_DataOut;
+  
+    // MISC wires
+  // Hazards Forwarding Unit
+  wire [1:0] mux_S_A, mux_S_B;
+  wire Nop_insertion_S, IFID_enable, PC_enable;
+  
+  
+  ////// MODULES //////
+  
+    // IF modules
+  inst_fetch IF (IF_DataOut, IF_NextPC, IF_PC_In, ID_TargetAdress, RegPC_Out, EXE_CH_Out, EN, clk);
+  	// ID modules
+  IFID ifid_pipe (ID_PC_out, ID_instr_out, IF_NextPC, IF_DataOut, clk, EXE_CH_Out, IFID_enable, EN);
+  RegisterFile regFile (PA, PB, RegPC_Out, WB_DataOut, IF_PC_In, WB_RdOut, ID_instr_out[19:16], ID_instr_out[3:0], WB_RF_EN, PC_enable, clk, EN);
+  mux_4x1_32Bit mux_A (ID_mux_A_out, mux_S_A, PA, EXE_ALUvsSSE_MUX_Out, MEM_MuxOut, WB_DataOut);
+  mux_4x1_32Bit mux_B (ID_mux_B_out, mux_S_B, PB, EXE_ALUvsSSE_MUX_Out, MEM_MuxOut, WB_DataOut);
+  x4_Sign_Extender x4_sign_ext (extended, ID_instr_out[23:0]);
+  Adder adder (ID_TargetAdress, extended, ID_PC_out);
+    
+  control_unit CU (ID_ALU_OP_CU, ID_data_size, ID_shift_imm_CU, ID_load_instr_CU, ID_RF_enable_CU, ID_B_instr, ID_instr_out);
+  CU_Mux CU_mux (ID_ALU_OP, ID_shift_imm, ID_load_instr, ID_RF_enable, ID_ALU_OP_CU, ID_shift_imm_CU, ID_load_instr_CU, ID_RF_enable_CU, Nop_insertion_S);
+  
+  	// EXE modules
+  ID_EXE_pipeline idexe_pipe (EXE_In, EXE_A, EXE_B, EXE_immed, EXE_Opcode, EXE_Rd_num, EXE_ALU_OP, EXE_I_cmd, EXE_S, EXE_shift_imm, EXE_load_instr, EXE_RF_enable, EXE_DataSize, ID_mux_A_out, ID_mux_B_out, ID_instr_out, ID_ALU_OP, ID_shift_imm, ID_load_instr, ID_RF_enable,  clk, ID_data_size, EN);
+  shifter_sign_extender SSE (EXE_SSE_Out, EXE_LS, EXE_B, EXE_A, EXE_immed, EXE_Opcode, EXE_I_cmd);
+  ALU_mux ALU_MUX (EXE_ALU_MUX_Out, EXE_B, EXE_SSE_Out, EXE_shift_imm);
+  ALU_component ALU (EXE_ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, EXE_A, EXE_ALU_MUX_Out, EXE_ALU_OP, SR_C);
+  ALUvsSSE_mux ALUvsSSE (EXE_ALUvsSSE_MUX_Out, EXE_ALU_Out, EXE_SSE_Out, EXE_LS);
+  status_register SR (SR_N, SR_Z, SR_C, SR_V, ALU_N, ALU_Z, ALU_C, ALU_V, EXE_S);
+  condition_handler CH (EXE_CH_Out, ID_instr_out[31:28], ID_B_instr, SR_N, SR_Z, SR_C, SR_V);
+  
+    // MEM modules
+  EXE_MEM_Pipeline exemem_pipe (MEM_DataMemIn, MEM_AddressDataOut, MEM_Rd_Out, MEM_DataSizeOut, MEM_LoadInst, MEM_RF_EN, MEM_LS, EXE_ALUvsSSE_MUX_Out, EXE_In, EXE_Rd_num, ID_data_size, EXE_load_instr, EXE_RF_enable, EXE_LS, ALU_N, ALU_Z, ALU_C, ALU_V, clk, EN);
+  memory DataMemory (MEM_DataOut, MEM_AddressOut, MEM_MuxOut, MEM_DataMemIn, MEM_AddressDataOut, MEM_LoadInst, MEM_DataSizeOut, MEM_LoadInst, MEM_LS);
 
-    initial #100 $finish; // Especifica cuando termina simulación  
+  	// WB modules
+  MEM_WB_Pipeline memwb_pipe (WB_LoadDataOut, WB_NonLoadDataOut, WB_RdOut, WB_LoadInst, WB_RF_EN, MEM_DataOut, MEM_AddressOut, MEM_Rd_Out, MEM_LoadInst, MEM_RF_EN, clk,EN);
+  writeback WB (WB_DataOut, WB_NonLoadDataOut, WB_LoadDataOut, WB_LoadInst);  
+  
+  	// MISC modules
+  HazForwUnit haz_forw (mux_S_A, mux_S_B, Nop_insertion_S, IFID_enable, PC_enable, EXE_Rd_num, MEM_Rd_Out, WB_RdOut, ID_instr_out[19:16], ID_instr_out[3:0], EXE_RF_enable, MEM_RF_EN, WB_RF_EN, EXE_load_instr);
+  
+    initial #500 $finish; // Especifica cuando termina simulación  
     initial fork
 
+      IF.ram1.Mem[0] = 32'b11100000100000100101000000000101;
+      IF.ram1.Mem[4] = 32'b11100010010100110011000000000001;
+      IF.ram1.Mem[8] = 32'b00011010111111111111111111111101;
+      IF.ram1.Mem[12] = 32'b11100101110000010101000000000011;
+      IF.ram1.Mem[16] = 32'b11011011100000000000000000000001;
+      // NOPs
+      IF.ram1.Mem[20] = 32'b0;
+      IF.ram1.Mem[24] = 32'b0;
+      IF.ram1.Mem[28] = 32'b0;
+      IF.ram1.Mem[32] = 32'b0;
+      
     join
+  
+    //Running clock
+    initial begin
+        EN = 1'b1;
+        clk = 1'b0;
+        EN = 1'b0;
+        repeat (17) 
+        #5 clk = ~clk;
+        
+    end
 
     initial begin
-        $display ("ALU: Oper              A(b)                    A(d)                 B(b)                    B(d)                Out(b)                 Out(d)  Ci S N Z C V    Time:");
-        #1 $monitor ("     %b %b %d %b %d  %b %d %b  %b %b %b %b %b %d", ALU_op, A, A,
-        B, B, Out, Out, Ci, S, N, Z, C, V, $time);
+          
+      $display ("          Instruction                        ID_Instruction          ID: B LI RF SI ALU_OP  EXE: LI RF SI ALU_OP  MEM: LI RF  WB: LI RF    Clock:       PC:               Time:");
+      $monitor (" %b   %b     %b %b  %b  %b   %b        %b  %b  %b   %b        %b  %b       %b  %b  ||   %b  ||| %d %d ", IF_DataOut, ID_instr_out, ID_B_instr, ID_load_instr, ID_RF_enable, ID_shift_imm, ID_ALU_OP,
+      EXE_load_instr, EXE_RF_enable, EXE_shift_imm, EXE_ALU_OP, MEM_LoadInst, MEM_RF_EN, WB_LoadInst, WB_RF_EN, clk, RegPC_Out, $time);
     end
 endmodule

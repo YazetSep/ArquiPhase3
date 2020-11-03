@@ -1,4 +1,4 @@
-module MEM_WB_Pipeline(output reg [31:0]DataOut, output reg [31:0]NonLoadDataOut, output reg [3:0]Rd_Out, output reg LoadInst, output reg RF_EN, input [31:0]MuxLoadDataIn, input [31:0]MuxNonLoadDataIn, input [3:0]Rd_In, input LI, input RF_Enable)
+module MEM_WB_Pipeline(output reg [31:0]DataOut, output reg [31:0]NonLoadDataOut, output reg [3:0]Rd_Out, output reg LoadInst, output reg RF_EN, input [31:0]MuxLoadDataIn, input [31:0]MuxNonLoadDataIn, input [3:0]Rd_In, input LI, input RF_Enable, clk);
 
 always @(posedge clk)
 begin
