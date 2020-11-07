@@ -31,7 +31,7 @@ module mux_2x1_32Bit (output reg [31:0] Y, input S, input [31:0] A, B);
     always @ (*)
     begin
         Y <= A;
-        // if (S) Y = B;
+        if (S) Y = B;
         
     end
 endmodule
@@ -44,7 +44,7 @@ module ram256x32_inst(output reg [31:0]DataOut, input Enable, input [31:0]PC);
     always @(*)
         if(Enable)
         begin
-            DataOut = Mem[PC]; //Always in Read Mode
+            DataOut = Mem[PC[7:0]]; //Always in Read Mode
             //Address = Address + 1;
         end
 
@@ -74,7 +74,8 @@ endmodule
 
 module x4_Sign_Extender(output reg [31:0] extended, input [23:0] input_instr);
     always @ (*) begin
-        extended = {{8{1'b0}}, input_instr};
+        if (input_instr[23]) extended = {{8{1'b1}}, input_instr};
+        else extended = {{8{1'b0}}, input_instr};
         extended = extended * 4;
     end
 endmodule
@@ -448,26 +449,26 @@ module ram256x32_data(output reg [31:0]DataOut, input Enable, ReadWrite, input[3
             case (DataSize)
                 //Byte
                 2'b00 : if (ReadWrite) begin : named_block1 //Read - Load named_block:
-                             integer i;
-                             DataOut = 32'b0;
-                             DataTemp = Mem[Address];
-                             for(i = 0; i <= 7; i=i+1)
-                             begin
-                                 DataOut[i] = DataTemp[i];
-                             end
-                         end 
-                         else 
-                             begin : named_block2//Write - Store
-                                 integer i;
-                                 Mem[Address] = 32'b0;
-                                 DataTemp = 32'b0;
-                                 for(i = 0; i <= 7; i=i+1)
-                                 begin
-                                     DataTemp[i] = DataIn[i];
-                                 end
-                                 Mem[Address] = DataTemp;
-                             end
-                //Half-Word
+                          integer i;
+                          DataOut = 32'b0;
+                          DataTemp = Mem[Address];
+                          for(i = 0; i <= 7; i=i+1)
+                          begin
+                              DataOut[i] = DataTemp[i];
+                          end
+                        end 
+                        else 
+                            begin : named_block2//Write - Store
+                                integer i;
+                                Mem[Address] = 32'b0;
+                                DataTemp = 32'b0;
+                                for(i = 0; i <= 7; i=i+1)
+                                begin
+                                    DataTemp[i] = DataIn[i];
+                                end
+                                Mem[Address] = DataTemp;
+                            end
+                //Half-Wrd
                 2'b01 : if (ReadWrite) begin : named_block3 //Read - Load
                             integer i;
                             DataOut = 32'b0;
@@ -741,37 +742,37 @@ module test_CPU;
   
   	// MISC modules
   HazForwUnit haz_forw (mux_S_A, mux_S_B, Nop_insertion_S, IFID_enable, PC_enable, EXE_Rd_num, MEM_Rd_Out, WB_RdOut, ID_instr_out[19:16], ID_instr_out[3:0], EXE_RF_enable, MEM_RF_EN, WB_RF_EN, EXE_load_instr);
-  
-    initial #500 $finish; // Especifica cuando termina simulación  
-    initial fork
+  integer i;
+  initial #500 $finish; // Especifica cuando termina simulación  
+  initial for(i = 0; i <= 255; i=i+4) IF.ram1.Mem[i] = 32'b0;
+  initial fork
+    
+    IF.ram1.Mem[0] = 32'b11100000100000100101000000000101;
+    IF.ram1.Mem[4] = 32'b11100010010100110011000000000001;
+    IF.ram1.Mem[8] = 32'b00011010111111111111111111111101;
+    IF.ram1.Mem[12] = 32'b11100101110000010101000000000011;
+    IF.ram1.Mem[16] = 32'b11011011100000000000000000000001;
+    // NOPs
+    IF.ram1.Mem[20] = 32'b0;
+    IF.ram1.Mem[24] = 32'b0;
+    IF.ram1.Mem[28] = 32'b0;
+    IF.ram1.Mem[32] = 32'b0;
+    
+  join
 
-      IF.ram1.Mem[0] = 32'b11100000100000100101000000000101;
-      IF.ram1.Mem[4] = 32'b11100010010100110011000000000001;
-      IF.ram1.Mem[8] = 32'b00011010111111111111111111111101;
-      IF.ram1.Mem[12] = 32'b11100101110000010101000000000011;
-      IF.ram1.Mem[16] = 32'b11011011100000000000000000000001;
-      // NOPs
-      IF.ram1.Mem[20] = 32'b0;
-      IF.ram1.Mem[24] = 32'b0;
-      IF.ram1.Mem[28] = 32'b0;
-      IF.ram1.Mem[32] = 32'b0;
+  //Running clock
+  initial begin
+      EN = 1'b1;
+      clk = 1'b0;
+      EN = 1'b0;
+      repeat (29) 
+      #5 clk = ~clk;
       
-    join
-  
-    //Running clock
-    initial begin
-        EN = 1'b1;
-        clk = 1'b0;
-        EN = 1'b0;
-        repeat (17) 
-        #5 clk = ~clk;
+  end
+  initial begin
         
-    end
-
-    initial begin
-          
-      $display ("          Instruction                        ID_Instruction          ID: B LI RF SI ALU_OP  EXE: LI RF SI ALU_OP  MEM: LI RF  WB: LI RF    Clock:       PC:               Time:");
-      $monitor (" %b   %b     %b %b  %b  %b   %b        %b  %b  %b   %b        %b  %b       %b  %b  ||   %b  ||| %d %d ", IF_DataOut, ID_instr_out, ID_B_instr, ID_load_instr, ID_RF_enable, ID_shift_imm, ID_ALU_OP,
-      EXE_load_instr, EXE_RF_enable, EXE_shift_imm, EXE_ALU_OP, MEM_LoadInst, MEM_RF_EN, WB_LoadInst, WB_RF_EN, clk, RegPC_Out, $time);
-    end
+    $display ("          Instruction                        ID_Instruction          ID: B LI RF SI ALU_OP  EXE: LI RF SI ALU_OP  MEM: LI RF  WB: LI RF    Clock:       PC:               Time:");
+    $monitor (" %b   %b     %b %b  %b  %b   %b        %b  %b  %b   %b        %b  %b       %b  %b  ||   %b  ||| %d %d ", IF_DataOut, ID_instr_out, ID_B_instr, ID_load_instr, ID_RF_enable, ID_shift_imm, ID_ALU_OP,
+    EXE_load_instr, EXE_RF_enable, EXE_shift_imm, EXE_ALU_OP, MEM_LoadInst, MEM_RF_EN, WB_LoadInst, WB_RF_EN, clk, RegPC_Out, $time);
+  end
 endmodule
