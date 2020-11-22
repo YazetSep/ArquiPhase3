@@ -106,29 +106,29 @@ module ALUvsSSE_mux(output reg [31:0] Out, input [31:0] ALU_Out, SSE_Out, input 
       else Out = ALU_Out;
 endmodule
 
-module condition_handler(output reg out, input[3:0] cond, input B_instr, N, Z, C, V);
+module condition_handler(output reg B_out, I_EN, input[3:0] cond, input B_instr, N, Z, C, V);
   always @ (cond, B_instr, N, Z, C, V)
     begin
-      out = 1'b0;
-      if(B_instr) begin
-        case(cond)
-          4'b0000 : if(Z) out = 1'b1;               // Equal
-          4'b0001 : if(~(Z)) out = 1'b1;            // Not equal
-          4'b0010 : if(C) out = 1'b1;               // Unsigned	higher or same
-          4'b0011 : if(~(C)) out = 1'b1;            // Unsigned lower
-          4'b0100 : if(N) out = 1'b1;               // Minus
-          4'b0101 : if(~(N)) out = 1'b1;            // Positive or Zero
-          4'b0110 : if(V) out = 1'b1;               // Overflow
-          4'b0111 : if(~(V)) out = 1'b1;            // No overflow
-          4'b1000 : if(C & ~(Z)) out = 1'b1;        // Unsigned higher
-          4'b1001 : if(~(C) | Z) out = 1'b1;        // Unsigned lower or same
-          4'b1010 : if(N == V) out = 1'b1;          // Greater or equal
-          4'b1011 : if(N != V) out = 1'b1;          // Less than
-          4'b1100 : if(~(Z) & (N == V)) out = 1'b1; // Greater than
-          4'b1101 : if(Z & (N != V)) out = 1'b1;    // Less than or equal
-          4'b1110 : out = 1'b1;                     // Always
-        endcase
-      end
+      
+      I_EN = 1'b0;
+      case(cond)
+        4'b0000 : if(Z) I_EN = 1'b1;               // Equal
+        4'b0001 : if(~(Z)) I_EN = 1'b1;            // Not equal
+        4'b0010 : if(C) I_EN = 1'b1;               // Unsigned	higher or same
+        4'b0011 : if(~(C)) I_EN = 1'b1;            // Unsigned lower
+        4'b0100 : if(N) I_EN = 1'b1;               // Minus
+        4'b0101 : if(~(N)) I_EN = 1'b1;            // Positive or Zero
+        4'b0110 : if(V) I_EN = 1'b1;               // Overflow
+        4'b0111 : if(~(V)) I_EN = 1'b1;            // No overflow
+        4'b1000 : if(C & ~(Z)) I_EN = 1'b1;        // Unsigned higher
+        4'b1001 : if(~(C) | Z) I_EN = 1'b1;        // Unsigned lower or same
+        4'b1010 : if(N == V) I_EN = 1'b1;          // Greater or equal
+        4'b1011 : if(N != V) I_EN = 1'b1;          // Less than
+        4'b1100 : if(~(Z) & (N == V)) I_EN = 1'b1; // Greater than
+        4'b1101 : if(Z & (N != V)) I_EN = 1'b1;    // Less than or equal
+        default : I_EN = 1'b1;                     // Always
+      endcase
+      B_out = B_instr & I_EN;
     end
 endmodule
 
@@ -221,8 +221,8 @@ endmodule
 
 module test_condition_handler;
   reg [3:0] cond; reg B_instr, N, Z, C, V;
-  wire out;
-  condition_handler ch (out, cond, B_instr, N, Z, C, V);
+  wire B_out, I_EN;
+  condition_handler ch (B_out, I_EN, cond, B_instr, N, Z, C, V);
   initial #100 $finish; // Especifica cuando termina simulación
   initial fork
     #40 B_instr = 1'b0; #40 cond = 4'b0000;
@@ -245,60 +245,60 @@ module test_condition_handler;
     #55 cond = 4'b1110; #55 N = 1'b0; #55 Z = 1'b0; #55 C = 1'b0; #55 V = 1'b0;
   join
   initial begin
-    #39 $display ("CH: B cond N Z C V out            Time:");
-    #1 $monitor ("    %b %b %b %b %b %b  %b  %d ", B_instr, cond, N, Z, C, V, out, $time); 
+    #39 $display ("CH: B cond N Z C V out EN            Time:");
+    #1 $monitor ("    %b %b %b %b %b %b %b  %b  %d ", B_instr, cond, N, Z, C, V, B_out, I_EN, $time); 
   end
 endmodule
 
-module EXE_test;
-  // External inputs
-  reg [31:0] A, B;
-  reg [11:0] I;
-  reg [4:0] Opcode;
-  reg [3:0] ALU_op, cond;
-  reg [2:0] I_cmd;
-  reg shift_imm, B_instr, S;
-  // Internal Outputs
-  wire [31:0] ALU_MUX_Out, ALU_Out, SSE_Out, F_Out;
-  wire LS, ALU_N, ALU_Z, ALU_C, ALU_V, Ni, Zi, Ci, Vi, CH_Out; 
+// module EXE_test;
+//   // External inputs
+//   reg [31:0] A, B;
+//   reg [11:0] I;
+//   reg [4:0] Opcode;
+//   reg [3:0] ALU_op, cond;
+//   reg [2:0] I_cmd;
+//   reg shift_imm, B_instr, S;
+//   // Internal Outputs
+//   wire [31:0] ALU_MUX_Out, ALU_Out, SSE_Out, F_Out;
+//   wire LS, ALU_N, ALU_Z, ALU_C, ALU_V, Ni, Zi, Ci, Vi, CH_Out; 
 
-  ALU_component AU (ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, A, ALU_MUX_Out, ALU_op, Ci); 
-  shifter_sign_extender SSE (SSE_Out, LS, B, A, I, Opcode, I_cmd);
-  condition_handler CH (CH_Out, cond, B_instr, Ni, Zi, Ci, Vi);
-  ALU_mux AM (ALU_MUX_Out, B, SSE_Out, shift_imm);
-  ALUvsSSE_mux ASM(F_Out, ALU_Out, SSE_Out, LS);
-  status_register SR (Ni, Zi, Ci, Vi, ALU_N, ALU_Z, ALU_C, ALU_V, S);
+//   ALU_component AU (ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, A, ALU_MUX_Out, ALU_op, Ci); 
+//   shifter_sign_extender SSE (SSE_Out, LS, B, A, I, Opcode, I_cmd);
+//   condition_handler CH (CH_Out, cond, B_instr, Ni, Zi, Ci, Vi);
+//   ALU_mux AM (ALU_MUX_Out, B, SSE_Out, shift_imm);
+//   ALUvsSSE_mux ASM(F_Out, ALU_Out, SSE_Out, LS);
+//   status_register SR (Ni, Zi, Ci, Vi, ALU_N, ALU_Z, ALU_C, ALU_V, S);
 
-  initial #100 $finish;
-  initial #57 fork
+//   initial #100 $finish;
+//   initial #57 fork
 
-    #1 begin
-      A = 32'b0000_0000_0000_0000_0000_0000_0000_0101;
-      B = 32'b0000_0000_0000_0000_0000_0111_0001_1101;
-      I = 12'b0000_01101010;
-      Opcode = 5'b10101;
-      ALU_op = 4'b0000; 
-      cond = 4'b0000;
-      I_cmd = 3'b001; 
-      shift_imm = 1'b0;
-      S = 1'b0;
-      B_instr = 1'b0;
-    end
-    #2 B_instr = 1'b1;
-    #3 shift_imm = 1'b1;
-    #4 S = 1'b1;
-    #5 begin
-      A = 32'b0100_0000_0000_0000_0000_0000_0000_0101;
-      B = 32'b0100_0000_0000_0000_0000_0111_0001_1101; 
-      I_cmd = 3'b011;
-    end
-  join
-  initial begin
-    #57 $display ("EXE:              A(Rn)                             B(Rm)                    I      I_cmd Opcode            SSE_Out               SI           ALU_MUX_Out            ALU_op Ci             ALU_Out              N Z C V LS               F_Out              S Nf Zf Cf Vf BI cond CH_Out          Time:");
-    #1 $monitor ("     %b %b %b  %b  %b  %b %b  %b  %b  %b  %b %b %b %b %b %b  %b %b %b  %b  %b  %b  %b  %b   %b    %d", A, B, I, I_cmd, Opcode, SSE_Out, shift_imm, 
-    ALU_MUX_Out, ALU_op, Ci, ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, LS, F_Out, S, Ni, Zi, Ci, Vi, B_instr, cond, CH_Out, $time);
-  end
-endmodule
+//     #1 begin
+//       A = 32'b0000_0000_0000_0000_0000_0000_0000_0101;
+//       B = 32'b0000_0000_0000_0000_0000_0111_0001_1101;
+//       I = 12'b0000_01101010;
+//       Opcode = 5'b10101;
+//       ALU_op = 4'b0000; 
+//       cond = 4'b0000;
+//       I_cmd = 3'b001; 
+//       shift_imm = 1'b0;
+//       S = 1'b0;
+//       B_instr = 1'b0;
+//     end
+//     #2 B_instr = 1'b1;
+//     #3 shift_imm = 1'b1;
+//     #4 S = 1'b1;
+//     #5 begin
+//       A = 32'b0100_0000_0000_0000_0000_0000_0000_0101;
+//       B = 32'b0100_0000_0000_0000_0000_0111_0001_1101; 
+//       I_cmd = 3'b011;
+//     end
+//   join
+//   initial begin
+//     #57 $display ("EXE:              A(Rn)                             B(Rm)                    I      I_cmd Opcode            SSE_Out               SI           ALU_MUX_Out            ALU_op Ci             ALU_Out              N Z C V LS               F_Out              S Nf Zf Cf Vf BI cond CH_Out          Time:");
+//     #1 $monitor ("     %b %b %b  %b  %b  %b %b  %b  %b  %b  %b %b %b %b %b %b  %b %b %b  %b  %b  %b  %b  %b   %b    %d", A, B, I, I_cmd, Opcode, SSE_Out, shift_imm, 
+//     ALU_MUX_Out, ALU_op, Ci, ALU_Out, ALU_N, ALU_Z, ALU_C, ALU_V, LS, F_Out, S, Ni, Zi, Ci, Vi, B_instr, cond, CH_Out, $time);
+//   end
+// endmodule
 
 
 // module test_SR;
