@@ -141,7 +141,7 @@ module RegisterFile (output [31:0] PuertoA, PuertoB, PC_out, PD, input [31:0] PW
   mux_16x1_32Bit mux_16x1D (PD, RD, Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9,
                   Q10, Q11, Q12, Q13, Q14, Q15);
   //Multiplexer to control PC_in (Priority writing data instead of writing new PC value)
-  mux_2x1_32Bit mux_2x1PC_in (mux_PCOut, E[15], PW, PC_in);
+  mux_2x1_32Bit mux_2x1PC_in (mux_PCOut, E[15], PC_in, PW);
 
   //OR gate to activate load of Register15/PC with Binary Decoder E[15] port or PCLd port
   or (reg15Ld, E[15], PCLd);
@@ -162,7 +162,7 @@ module RegisterFile (output [31:0] PuertoA, PuertoB, PC_out, PD, input [31:0] PW
   register_32bit R12 (Q12, PW, Clk, E[12], reset);
   register_32bit R13 (Q13, PW, Clk, E[13], reset);
   register_32bit R14 (Q14, PW, Clk, E[14], reset);
-  register_32bit R15 (Q15, PC_in, Clk, reg15Ld, reset);//Special Register also functions as Program Counter (PC)
+  register_32bit R15 (Q15, mux_PCOut, Clk, reg15Ld, reset);//Special Register also functions as Program Counter (PC)
   assign PC_out = Q15;
   
 endmodule
@@ -223,7 +223,7 @@ module binaryDecoder (output reg [15:0] E, input [3:0] C, input RF);
     end
 endmodule
 
-module register_32bit (output reg signed [31:0] Q, input [31:0] D, input Clk, Ld, reset);
+module register_32bit (output reg [31:0] Q, input [31:0] D, input Clk, Ld, reset);
   always @ (posedge reset, posedge Clk) begin
     if (reset) Q = 0;
     else if(Ld) Q = D;
@@ -344,13 +344,13 @@ input[31:0] Rn, input [11:0] I, input[4:0] Opcode, input [2:0] I_cmd);
   end
 endmodule
 
-module ALU_mux(output reg signed [31:0] Out, input [31:0] B, immed, input shift_imm);
+module ALU_mux(output reg [31:0] Out, input [31:0] B, immed, input shift_imm);
   always @ (shift_imm, B, immed)
       if (shift_imm) Out = immed;
       else Out = B;
 endmodule
 
-module ALU_component (output reg signed [31:0] Out, output reg N, Z, C, V, // CC = N, Z, C, V
+module ALU_component (output reg [31:0] Out, output reg N, Z, C, V, // CC = N, Z, C, V
 input [31:0] A, B, input [3:0] ALU_op, input Ci); 
   reg temp;
   reg [31:0]tempOut; // For cases where output doesn't matter
@@ -393,7 +393,7 @@ input [31:0] A, B, input [3:0] ALU_op, input Ci);
     
 endmodule
 
-module ALUvsSSE_mux(output reg signed [31:0] Out, input [31:0] ALU_Out, SSE_Out, input LS);
+module ALUvsSSE_mux(output reg [31:0] Out, input [31:0] ALU_Out, SSE_Out, input LS);
   always @ (LS, ALU_Out, SSE_Out)
       if (LS) Out = SSE_Out;
       else Out = ALU_Out;
@@ -436,7 +436,7 @@ endmodule
 
 /* EXE/MEM */
 
-module EXE_MEM_Pipeline(output reg signed [31:0] DataMemIn, AddressDataOut, output reg [3:0]Rd_Out, output reg [1:0]DataSizeOut, output reg LoadInst, RF_EN, MEM_LS, MEM_RW,
+module EXE_MEM_Pipeline(output reg [31:0] DataMemIn, AddressDataOut, output reg [3:0]Rd_Out, output reg [1:0]DataSizeOut, output reg LoadInst, RF_EN, MEM_LS, MEM_RW,
 input [31:0]ALU_Out, DataIn, input [3:0] Rd_In, input [1:0]DataSizeIn, input LI, RF_Enable, EXE_LS, N, Z, C, V, clk, reset, EXE_RW);
     
   always @(posedge reset) begin
@@ -466,7 +466,7 @@ endmodule
 
 ///////////////// Memory (MEM) ///////////////
 
-module memory(output reg signed [31:0]DataOut, AddressOut, MuxOut, input [31:0]DataIn, AddressIn, input RW, input [1:0]DataSize, input MuxController, Enable);
+module memory(output reg [31:0]DataOut, AddressOut, MuxOut, input [31:0]DataIn, AddressIn, input RW, input [1:0]DataSize, input MuxController, Enable);
 
   wire [31:0]DOut;
   wire [31:0]AOut;
@@ -493,7 +493,7 @@ module memory(output reg signed [31:0]DataOut, AddressOut, MuxOut, input [31:0]D
     end
 endmodule
 
-module ram256x32_data(output reg signed [31:0]DataOut, input Enable, ReadWrite, input[31:0]DataIn, input [31:0]Address, input [1:0]DataSize);
+module ram256x32_data(output reg [31:0]DataOut, input Enable, ReadWrite, input[31:0]DataIn, input [31:0]Address, input [1:0]DataSize);
 
   reg [7:0]Mem[0:1023];
   reg [31:0]DataTemp;
@@ -833,7 +833,7 @@ module test_CPU;
   initial begin 
     for(i = 0; i <= 1023; i=i+1) IF.ram1.Mem[i] = 8'b0;
 
-    fi = $fopen("testcode_arm_ppu_1.txt", "r");
+    fi = $fopen("testcode_arm_ppu_3.txt", "r");
     j = 0;
 	  while(!$feof(fi)) begin
       code = $fscanf(fi, "%b", data);
